@@ -1,7 +1,8 @@
 import axios from 'axios';
 
-const envUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
-const BACKEND_URL = envUrl !== undefined ? envUrl : 'http://localhost:3001';
+// Gunakan relative path '/api' secara default, cocok untuk reverse proxy (Nginx).
+// Jika ingin test lokal tanpa proxy, fallback ke environment variable.
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || '';
 
 export const api = axios.create({
   baseURL: `${BACKEND_URL}/api`,
