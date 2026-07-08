@@ -157,4 +157,5 @@ module.exports = {
   trainFaceFromBuffer,
   listSubjects,
   recognizeFaceFromBuffer,
+  deleteSubject,
 };
