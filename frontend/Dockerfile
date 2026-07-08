@@ -7,6 +7,9 @@ RUN npm install
 
 COPY . .
 
+# Create public dir if missing (required for Next.js standalone copy)
+RUN mkdir -p /app/public
+
 # Build Next.js standalone
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
@@ -27,6 +30,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
 USER nextjs
 
-EXPOSE 3000
+EXPOSE 8080
+
+ENV PORT=8080
+ENV HOSTNAME=0.0.0.0
 
 CMD ["node", "server.js"]
