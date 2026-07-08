@@ -53,6 +53,13 @@ export const attendanceApi = {
     const queryStr = new URLSearchParams(params as Record<string, string>).toString();
     window.open(`${BACKEND_URL}/api/attendance/export?${queryStr}`, '_blank');
   },
+  recognize: (blob: Blob) => {
+    const form = new FormData();
+    form.append('file', blob, 'frame.jpg');
+    return api.post('/attendance/recognize', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
 };
 
 // ── Types ─────────────────────────────────────────────────────────────────────

@@ -122,10 +122,39 @@ async function listSubjects() {
   return response.data.subjects || [];
 }
 
+/**
+ * Recognize a face from a local file buffer
+ * @param {Buffer} fileBuffer
+ * @param {string} originalName
+ * @returns {Promise<object>}
+ */
+async function recognizeFaceFromBuffer(fileBuffer, originalName = 'photo.jpg') {
+  try {
+    const form = new FormData();
+    form.append('file', fileBuffer, {
+      filename: originalName,
+      contentType: 'image/jpeg',
+    });
+
+    const response = await compreFaceAxios.post(
+      `/recognize?limit=1&det_prob_threshold=0.8&prediction_count=1`,
+      form,
+      { headers: form.getHeaders() }
+    );
+
+    return response.data;
+  } catch (err) {
+    if (err.response && err.response.data) {
+      console.error(`[CompreFace] Recognition failed:`, err.response.data);
+    }
+    throw new Error(`CompreFace recognizeFace failed: ${err.message}`);
+  }
+}
+
 module.exports = {
   addSubject,
   trainFaceFromUrl,
   trainFaceFromBuffer,
-  deleteSubject,
   listSubjects,
+  recognizeFaceFromBuffer,
 };

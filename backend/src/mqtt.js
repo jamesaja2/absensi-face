@@ -136,4 +136,4 @@ function processAttendance(subjectName, confidence, io) {
   console.log(`[Socket.io] Emitted attendance:new for "${user.name}"`);
 }
 
-module.exports = { startMqttListener };
+module.exports = { startMqttListener, processAttendance };

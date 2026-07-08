@@ -1,6 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const { getDb } = require('../db');
+const multer = require('multer');
+const { recognizeFaceFromBuffer } = require('../services/compreface');
+const { processAttendance } = require('../mqtt');
+
+// Use memory storage for fast in-memory image processing
+const upload = multer({ storage: multer.memoryStorage() });
 
 // ─── GET /api/attendance ──────────────────────────────────────────────────────
 // Query params: date (YYYY-MM-DD), user_id, limit (default 100), offset (default 0)
@@ -146,6 +152,55 @@ router.get('/export', (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(csvHeader + csvRows);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/attendance/recognize ───────────────────────────────────────────
+// Accept an image frame from the kiosk UI and process it with CompreFace
+router.post('/recognize', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image file provided' });
+    }
+
+    // Call CompreFace to recognize the face
+    const result = await recognizeFaceFromBuffer(req.file.buffer, 'frame.jpg');
+
+    if (!result || !result.result || result.result.length === 0) {
+      return res.status(200).json({ success: false, message: 'Wajah tidak terdeteksi atau tidak dikenali' });
+    }
+
+    // Get the top match
+    const match = result.result[0].subjects[0];
+    if (!match) {
+      return res.status(200).json({ success: false, message: 'Wajah tidak dikenali dalam database' });
+    }
+
+    const confidence = match.similarity * 100;
+    const subjectName = match.subject;
+
+    // Check confidence against threshold from env or default 80
+    const threshold = parseFloat(process.env.CONFIDENCE_THRESHOLD) || 80;
+    if (confidence < threshold) {
+      return res.status(200).json({ 
+        success: false, 
+        message: `Kepercayaan rendah (${confidence.toFixed(1)}% < ${threshold}%) untuk ${subjectName}` 
+      });
+    }
+
+    // Process attendance using existing logic
+    const io = req.app.get('io');
+    processAttendance(subjectName, confidence, io);
+
+    res.status(200).json({ 
+      success: true, 
+      subject: subjectName, 
+      confidence 
+    });
+
+  } catch (err) {
+    console.error('[Attendance] Recognize error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

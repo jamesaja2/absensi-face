@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { attendanceApi } from '@/lib/api';
 
 interface CameraFeedProps {
   className?: string;
@@ -10,6 +11,51 @@ export default function CameraFeed({ className = '' }: CameraFeedProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [status, setStatus] = useState<'loading' | 'active' | 'denied' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState('');
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const captureFrame = useCallback(async () => {
+    if (!videoRef.current || !canvasRef.current || status !== 'active') return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+
+    // Set canvas dimensions to match video
+    if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+    }
+
+    // Draw frame to canvas
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    // Convert to blob and send
+    canvas.toBlob(async (blob) => {
+      if (!blob) return;
+      try {
+        await attendanceApi.recognize(blob);
+        // The backend handles the confidence check and socket emission,
+        // so we don't need to do anything here if it's successful.
+      } catch (err) {
+        // Silently ignore recognition errors on the client side to avoid spam
+      }
+    }, 'image/jpeg', 0.8);
+  }, [status]);
+
+  // Capture interval (every 2 seconds)
+  useEffect(() => {
+    if (status === 'active') {
+      intervalRef.current = setInterval(captureFrame, 2000);
+    } else if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [status, captureFrame]);
 
   useEffect(() => {
     let stream: MediaStream | null = null;
@@ -65,6 +111,9 @@ export default function CameraFeed({ className = '' }: CameraFeedProps) {
         }`}
         style={{ transform: 'scaleX(-1)' }} // Mirror effect
       />
+
+      {/* Hidden canvas for capturing frames */}
+      <canvas ref={canvasRef} className="hidden" />
 
       {/* Loading state */}
       {status === 'loading' && (
