@@ -16,11 +16,11 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3001
-      # MQTT — points to the Mosquitto container on the same network
-      MQTT_BROKER: mqtt://mosquitto_absensi:1883
+      # MQTT — points to the Mosquitto container on the host IP
+      MQTT_BROKER: mqtt://192.168.100.52:1883
       MQTT_TOPIC: "double-take/matches/#"
-      # CompreFace — update COMPREFACE_API_KEY after verifying in Phase 1
-      COMPREFACE_URL: http://compreface-ui:80
+      # CompreFace
+      COMPREFACE_URL: http://192.168.100.52:8000
       # NOTE: compreface-ui listens on port 80 internally (maps to host 8000)
       # If running backend outside Docker on same host, use http://192.168.100.52:8000
       COMPREFACE_API_KEY: ${COMPREFACE_API_KEY:-b410e83f-4343-4079-a98f-d43e13610846}
