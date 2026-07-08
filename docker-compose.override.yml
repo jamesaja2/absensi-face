@@ -57,12 +57,11 @@ services:
     container_name: frontend_absensi
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "8080:3000"
     environment:
       NODE_ENV: production
       NEXT_PUBLIC_BACKEND_URL: ""
       HOSTNAME: "0.0.0.0"
-      PORT: 3000
     networks:
       - absensi_net
     depends_on:
