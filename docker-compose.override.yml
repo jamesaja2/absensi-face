@@ -1,0 +1,73 @@
+# docker-compose.override.yml
+# Adds the backend and frontend services to the existing absensi infrastructure stack.
+# Run with: docker compose -f docker-compose.yml -f docker-compose.override.yml up -d
+
+services:
+
+  # ─── BACKEND (Node.js / Express + SQLite) ────────────────────────────────────
+  backend_absensi:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: backend_absensi
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      # MQTT — points to the Mosquitto container on the same network
+      MQTT_BROKER: mqtt://mosquitto_absensi:1883
+      MQTT_TOPIC: "double-take/matches/#"
+      # CompreFace — update COMPREFACE_API_KEY after verifying in Phase 1
+      COMPREFACE_URL: http://compreface-ui:80
+      COMPREFACE_API_KEY: ${COMPREFACE_API_KEY:-your-api-key-here}
+      # Database (persisted via volume)
+      DB_PATH: /data/attendance.db
+      # JWT — CHANGE THIS IN PRODUCTION
+      JWT_SECRET: ${JWT_SECRET:-change-this-secret-in-production}
+      JWT_EXPIRES_IN: 8h
+      # Admin credentials — CHANGE THESE
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      # Detection settings
+      CONFIDENCE_THRESHOLD: 80
+      DEBOUNCE_MINUTES: 3
+    volumes:
+      - ./data:/data
+      - ./backend/uploads:/app/uploads
+    networks:
+      - absensi_net
+    depends_on:
+      - mosquitto_absensi
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ─── FRONTEND (Next.js) ───────────────────────────────────────────────────────
+  frontend_absensi:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_BACKEND_URL: http://192.168.100.52:3001
+    container_name: frontend_absensi
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_BACKEND_URL: http://192.168.100.52:3001
+      HOSTNAME: "0.0.0.0"
+      PORT: 3000
+    networks:
+      - absensi_net
+    depends_on:
+      - backend_absensi
+
+networks:
+  absensi_net:
+    external: true

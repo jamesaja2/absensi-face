@@ -1,0 +1,17 @@
+[Unit]
+Description=Absensi Facial Recognition System
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=face
+WorkingDirectory=/home/face/absensi-system
+ExecStart=/home/face/absensi-system/start.sh
+ExecStop=docker compose down
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
