@@ -21,7 +21,9 @@ services:
       MQTT_TOPIC: "double-take/matches/#"
       # CompreFace — update COMPREFACE_API_KEY after verifying in Phase 1
       COMPREFACE_URL: http://compreface-ui:80
-      COMPREFACE_API_KEY: ${COMPREFACE_API_KEY:-your-api-key-here}
+      # NOTE: compreface-ui listens on port 80 internally (maps to host 8000)
+      # If running backend outside Docker on same host, use http://192.168.100.52:8000
+      COMPREFACE_API_KEY: ${COMPREFACE_API_KEY:-b410e83f-4343-4079-a98f-d43e13610846}
       # Database (persisted via volume)
       DB_PATH: /data/attendance.db
       # JWT — CHANGE THIS IN PRODUCTION
