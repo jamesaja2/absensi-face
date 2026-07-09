@@ -12,21 +12,18 @@ export default function KioskPage() {
   const [recentLogs, setRecentLogs] = useState<AttendanceLog[]>([]);
   const [activeModal, setActiveModal] = useState<{ log: AttendanceLog; message: string } | null>(null);
   const [socketConnected, setSocketConnected] = useState(false);
-  const [lastDetections, setLastDetections] = useState<AttendanceLog[]>([]);
 
-  // Clock update
   useEffect(() => {
     const interval = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(interval);
   }, []);
 
-  // Load initial stats
   useEffect(() => {
     const loadData = async () => {
       try {
         const [statsRes, logsRes] = await Promise.all([
           attendanceApi.getStatsToday(),
-          attendanceApi.getLogs({ limit: 5 }),
+          attendanceApi.getLogs({ limit: 8 }),
         ]);
         setTodayStats(statsRes.data);
         setRecentLogs(logsRes.data.logs);
@@ -39,31 +36,17 @@ export default function KioskPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Socket.io connection
   useEffect(() => {
     const socket = getSocket();
-
     socket.on('connect', () => setSocketConnected(true));
     socket.on('disconnect', () => setSocketConnected(false));
-
     socket.on('attendance:new', (data: { log: AttendanceLog; message: string }) => {
-      console.log('[Kiosk] Attendance event:', data);
-
-      // Show modal
       setActiveModal(data);
-
-      // Update recent list
-      setLastDetections((prev) => [data.log, ...prev].slice(0, 10));
-
-      // Update today count
+      setRecentLogs((prev) => [data.log, ...prev].slice(0, 8));
       setTodayStats((prev) =>
         prev ? { ...prev, totalAttendanceToday: prev.totalAttendanceToday + 1 } : prev
       );
-
-      // Update recent logs
-      setRecentLogs((prev) => [data.log, ...prev].slice(0, 5));
     });
-
     return () => {
       socket.off('connect');
       socket.off('disconnect');
@@ -71,165 +54,163 @@ export default function KioskPage() {
     };
   }, []);
 
-  const handleModalDismiss = useCallback(() => {
-    setActiveModal(null);
-  }, []);
+  const handleModalDismiss = useCallback(() => setActiveModal(null), []);
 
-  const formatDate = (date: Date) => {
-    return date.toLocaleDateString('id-ID', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  };
+  const formatDate = (date: Date) =>
+    date.toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString('id-ID', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-    });
-  };
+  const formatTime = (date: Date) =>
+    date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 
-  const formatLogTime = (timestamp: string) => {
-    return new Date(timestamp).toLocaleTimeString('id-ID', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
+  const formatLogTime = (timestamp: string) =>
+    new Date(timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+
+  const getInitial = (name: string) => name.charAt(0).toUpperCase();
 
   return (
-    <main className="kiosk-bg bg-grid min-h-screen flex flex-col select-none overflow-hidden">
+    <main className="kiosk-bg min-h-screen flex flex-col select-none" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
 
-      {/* ── HEADER BAR ────────────────────────────────────────────── */}
-      <header className="flex items-center justify-between px-8 py-4 border-b border-white/5">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary flex items-center justify-center glow-primary">
-            <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+      {/* ── HEADER ─────────────────────────────────────────────────── */}
+      <header style={{
+        background: '#fff',
+        borderBottom: '1px solid var(--color-border)',
+        padding: '0 32px',
+        height: 60,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexShrink: 0,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* Logo icon */}
+          <div style={{
+            width: 34, height: 34, borderRadius: 8,
+            background: 'var(--color-accent)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="#fff" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round"
+                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round"
+                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
             </svg>
           </div>
           <div>
-            <h1 className="text-lg font-bold text-white leading-none">Sistem Absensi</h1>
-            <p className="text-xs text-slate-500 mt-0.5">Pengenalan Wajah Otomatis</p>
+            <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--color-text-primary)' }}>Sistem Absensi</div>
+            <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Pengenalan Wajah Otomatis</div>
           </div>
         </div>
 
-        {/* Connection status */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full glass">
-          <span className={`w-2 h-2 rounded-full ${socketConnected ? 'bg-brand-success animate-pulse' : 'bg-red-500'}`} />
-          <span className="text-xs font-medium text-slate-300">
-            {socketConnected ? 'Terhubung' : 'Terputus'}
-          </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--color-text-secondary)' }}>
+          <span className={`status-dot ${socketConnected ? 'online' : 'offline'}`} />
+          {socketConnected ? 'Terhubung' : 'Terputus'}
         </div>
       </header>
 
-      {/* ── MAIN CONTENT ──────────────────────────────────────────── */}
-      <div className="flex-1 grid grid-cols-5 gap-6 p-6">
+      {/* ── MAIN ───────────────────────────────────────────────────── */}
+      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 360px', gap: 24, padding: 24, minHeight: 0 }}>
 
-        {/* LEFT — Camera + Clock */}
-        <div className="col-span-3 flex flex-col gap-4">
+        {/* LEFT — Camera column */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-          {/* Clock */}
-          <div className="glass rounded-2xl px-6 py-5">
-            <div className="flex items-end gap-4">
-              <div>
-                <p className="text-6xl font-black text-white tabular-nums tracking-tight leading-none">
-                  {formatTime(currentTime)}
-                </p>
-                <p className="text-slate-400 text-sm mt-2 font-medium capitalize">
-                  {formatDate(currentTime)}
-                </p>
+          {/* Clock + stat */}
+          <div className="card" style={{ padding: '20px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ fontSize: 48, fontWeight: 700, letterSpacing: '-2px', lineHeight: 1, color: 'var(--color-text-primary)', fontVariantNumeric: 'tabular-nums' }}>
+                {formatTime(currentTime)}
               </div>
-              <div className="ml-auto text-right">
-                {todayStats && (
-                  <div>
-                    <p className="text-3xl font-bold gradient-text">{todayStats.totalAttendanceToday}</p>
-                    <p className="text-xs text-slate-500 mt-1">Hadir Hari Ini</p>
-                  </div>
-                )}
+              <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 6, textTransform: 'capitalize' }}>
+                {formatDate(currentTime)}
               </div>
             </div>
+            {todayStats && (
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 36, fontWeight: 700, color: 'var(--color-accent)' }}>
+                  {todayStats.totalAttendanceToday}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>Hadir Hari Ini</div>
+              </div>
+            )}
           </div>
 
-          {/* Camera Feed */}
-          <CameraFeed className="flex-1 min-h-0" />
+          {/* Camera */}
+          <div style={{ flex: 1, minHeight: 0 }}>
+            <CameraFeed className="h-full" />
+          </div>
 
-          {/* Instruction banner */}
-          <div className="glass rounded-xl px-6 py-3 flex items-center justify-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-brand-accent/10 flex items-center justify-center">
-              <svg className="w-5 h-5 text-brand-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-              </svg>
-            </div>
-            <p className="text-sm text-slate-300">
+          {/* Instruction */}
+          <div className="card" style={{ padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="var(--color-accent)" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round"
+                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>
               Hadapkan wajah Anda ke kamera untuk absensi otomatis
-            </p>
+            </span>
           </div>
         </div>
 
-        {/* RIGHT — Recent Activity */}
-        <div className="col-span-2 flex flex-col gap-4">
+        {/* RIGHT — Stats + Activity */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-          {/* Stats Grid */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="glass rounded-xl p-4 text-center">
-              <p className="text-2xl font-bold gradient-text">
-                {todayStats?.totalAttendanceToday ?? '-'}
-              </p>
-              <p className="text-xs text-slate-500 mt-1">Total Hadir</p>
-            </div>
-            <div className="glass rounded-xl p-4 text-center">
-              <p className="text-2xl font-bold text-brand-accent">
-                {todayStats?.totalUsers ?? '-'}
-              </p>
-              <p className="text-xs text-slate-500 mt-1">Total Karyawan</p>
-            </div>
+          {/* Stats */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            {[
+              { label: 'Hadir Hari Ini', value: todayStats?.totalAttendanceToday ?? '—' },
+              { label: 'Total Karyawan', value: todayStats?.totalUsers ?? '—' },
+            ].map((s) => (
+              <div key={s.label} className="card" style={{ padding: 16, textAlign: 'center' }}>
+                <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--color-text-primary)' }}>{s.value}</div>
+                <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>{s.label}</div>
+              </div>
+            ))}
           </div>
 
-          {/* Recent Activity */}
-          <div className="flex-1 glass rounded-2xl flex flex-col overflow-hidden">
-            <div className="px-4 py-3 border-b border-white/5">
-              <h3 className="text-sm font-semibold text-slate-300">Aktivitas Terbaru</h3>
+          {/* Recent activity */}
+          <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--color-border)' }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Aktivitas Terbaru
+              </span>
             </div>
-            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
               {recentLogs.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-32 text-slate-600">
-                  <svg className="w-8 h-8 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                      d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                  </svg>
-                  <p className="text-xs">Belum ada aktivitas</p>
+                <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 }}>
+                  Belum ada aktivitas hari ini
                 </div>
               ) : (
                 recentLogs.map((log) => (
-                  <div
-                    key={log.id}
-                    className="flex items-center gap-3 p-3 rounded-xl bg-dark-600/50 hover:bg-dark-500/50 transition-colors"
-                  >
+                  <div key={log.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '10px 16px',
+                    borderBottom: '1px solid var(--color-border)',
+                    transition: 'background 0.1s',
+                  }}>
                     {/* Avatar */}
-                    <div className="w-10 h-10 rounded-full overflow-hidden bg-brand-primary/20 flex-shrink-0 flex items-center justify-center border border-brand-primary/20">
-                      {log.photo_url ? (
-                        <img src={log.photo_url} alt={log.name} className="w-full h-full object-cover" />
-                      ) : (
-                        <span className="text-sm font-bold text-brand-primary">
-                          {log.name.charAt(0).toUpperCase()}
-                        </span>
-                      )}
+                    <div style={{
+                      width: 36, height: 36, borderRadius: '50%',
+                      background: 'var(--color-accent-light)',
+                      color: 'var(--color-accent)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontWeight: 700, fontSize: 13, flexShrink: 0,
+                      overflow: 'hidden',
+                    }}>
+                      {log.photo_url
+                        ? <img src={log.photo_url} alt={log.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        : getInitial(log.name)
+                      }
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-white truncate">{log.name}</p>
-                      <p className="text-xs text-slate-500">{log.nomor_induk}</p>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--color-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {log.name}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{log.nomor_induk}</div>
                     </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className="text-xs font-medium text-brand-success">{log.status}</p>
-                      <p className="text-xs text-slate-500 mt-0.5">{formatLogTime(log.timestamp)}</p>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <span className="badge badge-success">{log.status}</span>
+                      <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 3 }}>
+                        {formatLogTime(log.timestamp)}
+                      </div>
                     </div>
                   </div>
                 ))
@@ -237,16 +218,12 @@ export default function KioskPage() {
             </div>
           </div>
 
-          {/* Footer info */}
-          <div className="text-center">
-            <p className="text-xs text-slate-600">
-              Sistem Absensi Pengenalan Wajah — Powered by CompreFace
-            </p>
+          <div style={{ textAlign: 'center', fontSize: 11, color: 'var(--color-text-muted)' }}>
+            Sistem Absensi Pengenalan Wajah — ArcFace R100
           </div>
         </div>
       </div>
 
-      {/* ── SUCCESS MODAL ─────────────────────────────────────────── */}
       {activeModal && (
         <AttendanceModal
           log={activeModal.log}

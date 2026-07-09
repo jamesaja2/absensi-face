@@ -29,7 +29,7 @@ export default function AttendanceModal({
 
     const dismissTimer = setTimeout(() => {
       setExiting(true);
-      setTimeout(onDismiss, 400);
+      setTimeout(onDismiss, 300);
     }, autoDismissMs);
 
     return () => {
@@ -46,92 +46,107 @@ export default function AttendanceModal({
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex items-center justify-center transition-all duration-400
-        ${exiting ? 'opacity-0 scale-95' : 'opacity-100 scale-100 animate-fade-in'}`}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 50,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        transition: 'opacity 0.3s ease',
+        opacity: exiting ? 0 : 1,
+      }}
     >
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/80 backdrop-blur-md"
-        onClick={() => { setExiting(true); setTimeout(onDismiss, 400); }}
+        style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)' }}
+        onClick={() => { setExiting(true); setTimeout(onDismiss, 300); }}
       />
 
-      {/* Modal card */}
-      <div
-        className={`relative z-10 w-full max-w-md mx-6 rounded-3xl overflow-hidden
-          ${exiting ? 'animate-none' : 'animate-scale-in'}`}
-      >
-        {/* Animated gradient border */}
-        <div className="animated-border rounded-3xl">
-          <div className="bg-dark-500 rounded-3xl p-8 text-center">
+      {/* Modal */}
+      <div style={{
+        position: 'relative', zIndex: 1,
+        background: '#fff',
+        borderRadius: 20,
+        padding: '36px 40px',
+        width: '100%', maxWidth: 380,
+        margin: '0 24px',
+        textAlign: 'center',
+        boxShadow: '0 24px 60px rgba(0,0,0,0.15)',
+        transform: exiting ? 'scale(0.95)' : 'scale(1)',
+        transition: 'transform 0.3s ease',
+      }}>
 
-            {/* Success ring animation */}
-            <div className="relative flex items-center justify-center mb-6">
-              {/* Outer rings */}
-              <div className="absolute w-36 h-36 rounded-full border border-brand-success/20 success-ring" />
-              <div className="absolute w-28 h-28 rounded-full border border-brand-success/30 success-ring" style={{ animationDelay: '0.3s' }} />
-
-              {/* Photo or icon circle */}
-              <div className="relative w-24 h-24 rounded-full overflow-hidden border-4 border-brand-success glow-success">
-                {log.photo_url ? (
-                  <img
-                    src={log.photo_url}
-                    alt={log.name}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = 'none';
-                    }}
-                  />
-                ) : null}
-                {/* Fallback avatar */}
-                <div className={`absolute inset-0 flex items-center justify-center bg-brand-success/20 ${log.photo_url ? 'opacity-0' : 'opacity-100'}`}>
-                  <span className="text-4xl font-bold text-brand-success">
-                    {log.name.charAt(0).toUpperCase()}
-                  </span>
-                </div>
-              </div>
-
-              {/* Checkmark badge */}
-              <div className="absolute bottom-0 right-1/2 translate-x-14 translate-y-2 w-8 h-8 rounded-full bg-brand-success flex items-center justify-center shadow-lg glow-success animate-checkmark">
-                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-            </div>
-
-            {/* Text content */}
-            <p className="text-sm font-medium text-brand-success/80 uppercase tracking-widest mb-2">
-              ✓ Berhasil Absen
-            </p>
-            <h2 className="text-3xl font-bold text-white mb-1">{log.name}</h2>
-            <p className="text-brand-accent text-sm font-medium mb-1">{log.nomor_induk}</p>
-            <p className="text-slate-400 text-sm">{formattedTime}</p>
-
-            {/* Confidence badge */}
-            <div className="mt-4 inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-brand-success/10 border border-brand-success/20">
-              <svg className="w-3 h-3 text-brand-success" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+        {/* Avatar */}
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20 }}>
+          <div style={{
+            width: 80, height: 80, borderRadius: '50%',
+            border: '3px solid var(--color-success)',
+            overflow: 'hidden',
+            background: 'var(--color-success-light)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            position: 'relative',
+          }}>
+            {log.photo_url
+              ? <img src={log.photo_url} alt={log.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              : <span style={{ fontSize: 32, fontWeight: 700, color: 'var(--color-success)' }}>{log.name.charAt(0).toUpperCase()}</span>
+            }
+            {/* Checkmark overlay */}
+            <div style={{
+              position: 'absolute', bottom: -4, right: -4,
+              width: 24, height: 24, borderRadius: '50%',
+              background: 'var(--color-success)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              border: '2px solid #fff',
+            }}>
+              <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="#fff" strokeWidth={3}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
-              <span className="text-xs text-brand-success font-semibold">
-                Keyakinan: {log.confidence?.toFixed(1)}%
-              </span>
             </div>
-
-            {/* Status */}
-            <div className="mt-3">
-              <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold badge-hadir">
-                {log.status}
-              </span>
-            </div>
-
-            {/* Progress bar */}
-            <div className="mt-6 w-full h-1 bg-dark-400 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-brand-success to-brand-accent rounded-full transition-all duration-75"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-            <p className="text-xs text-slate-500 mt-2">Menutup otomatis...</p>
           </div>
+        </div>
+
+        {/* Status text */}
+        <div style={{
+          fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase',
+          color: 'var(--color-success)', marginBottom: 8,
+        }}>
+          Berhasil Absen
+        </div>
+
+        {/* Name */}
+        <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 4 }}>
+          {log.name}
+        </div>
+
+        {/* Nomor induk */}
+        <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 4 }}>
+          {log.nomor_induk}
+        </div>
+
+        {/* Time */}
+        <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 16 }}>
+          {formattedTime}
+        </div>
+
+        {/* Confidence + status */}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 20 }}>
+          {log.confidence && (
+            <span className="badge badge-success">
+              {log.confidence.toFixed(1)}% keyakinan
+            </span>
+          )}
+          <span className="badge badge-neutral">{log.status}</span>
+        </div>
+
+        {/* Progress bar */}
+        <div style={{ height: 3, background: 'var(--color-border)', borderRadius: 99, overflow: 'hidden' }}>
+          <div style={{
+            height: '100%',
+            background: 'var(--color-success)',
+            borderRadius: 99,
+            width: `${progress}%`,
+            transition: 'width 0.07s linear',
+          }} />
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 8 }}>
+          Menutup otomatis...
         </div>
       </div>
     </div>
