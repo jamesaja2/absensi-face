@@ -7,6 +7,14 @@ interface AttendanceTableProps {
   logs: AttendanceLog[];
 }
 
+// Parse timestamp from DB (SQLite stores without tz info, treat as WIB = UTC+7)
+function parseDbTimestamp(ts: string): Date {
+  // Add +07:00 so JS parses it as WIB, not UTC
+  const normalized = ts.replace(' ', 'T');
+  if (normalized.endsWith('Z') || normalized.includes('+')) return new Date(normalized);
+  return new Date(normalized + '+07:00');
+}
+
 export default function AttendanceTable({ logs }: AttendanceTableProps) {
   const [search, setSearch] = useState('');
 
@@ -17,18 +25,19 @@ export default function AttendanceTable({ logs }: AttendanceTableProps) {
   );
 
   const formatDateTime = (timestamp: string) => {
-    const d = new Date(timestamp);
+    const d = parseDbTimestamp(timestamp);
     return {
-      date: d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }),
-      time: d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      date: d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Jakarta' }),
+      time: d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Jakarta' }),
     };
   };
 
   return (
-    <div className="flex flex-col gap-3">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {/* Search */}
-      <div className="relative">
-        <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <div style={{ position: 'relative' }}>
+        <svg style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-muted)' }}
+          width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
         </svg>
         <input
@@ -37,86 +46,59 @@ export default function AttendanceTable({ logs }: AttendanceTableProps) {
           placeholder="Cari nama atau nomor induk..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full bg-dark-600 border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-600 focus:border-brand-primary input-glow transition-all"
+          className="input"
+          style={{ paddingLeft: 38 }}
         />
       </div>
 
       {/* Table */}
-      <div className="glass rounded-2xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
+      <div className="card" style={{ overflow: 'hidden' }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="table">
             <thead>
-              <tr className="border-b border-white/5">
-                <th className="text-left px-6 py-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">#</th>
-                <th className="text-left px-6 py-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">Foto</th>
-                <th className="text-left px-6 py-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">Nama</th>
-                <th className="text-left px-6 py-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">Nomor Induk</th>
-                <th className="text-left px-6 py-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">Tanggal</th>
-                <th className="text-left px-6 py-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">Jam</th>
-                <th className="text-left px-6 py-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">Status</th>
-                <th className="text-left px-6 py-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">Keyakinan</th>
+              <tr>
+                <th>#</th>
+                <th>Foto</th>
+                <th>Nama</th>
+                <th>Nomor Induk</th>
+                <th>Tanggal</th>
+                <th>Jam</th>
+                <th>Status</th>
+                <th>Keyakinan</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/5">
+            <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-16">
-                    <div className="flex flex-col items-center gap-3 text-slate-600">
-                      <svg className="w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                      </svg>
-                      <p className="text-sm">
-                        {search ? `Tidak ada hasil untuk "${search}"` : 'Belum ada data absensi'}
-                      </p>
-                    </div>
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--color-text-muted)' }}>
+                    {search ? `Tidak ada hasil untuk "${search}"` : 'Belum ada data absensi'}
                   </td>
                 </tr>
               ) : (
                 filtered.map((log, idx) => {
                   const { date, time } = formatDateTime(log.timestamp);
                   return (
-                    <tr key={log.id} className="table-row-hover transition-colors">
-                      <td className="px-6 py-4 text-xs text-slate-600 font-mono">{idx + 1}</td>
-                      <td className="px-6 py-4">
-                        <div className="w-9 h-9 rounded-full overflow-hidden bg-brand-primary/20 flex items-center justify-center border border-brand-primary/20">
-                          {log.photo_url ? (
-                            <img src={log.photo_url} alt={log.name} className="w-full h-full object-cover"
-                              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                          ) : (
-                            <span className="text-xs font-bold text-brand-primary">{log.name.charAt(0)}</span>
-                          )}
+                    <tr key={log.id}>
+                      <td style={{ color: 'var(--color-text-muted)', fontFamily: 'monospace', fontSize: 12 }}>{idx + 1}</td>
+                      <td>
+                        <div style={{
+                          width: 32, height: 32, borderRadius: '50%',
+                          background: 'var(--color-accent-light)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          overflow: 'hidden', fontSize: 12, fontWeight: 700, color: 'var(--color-accent)',
+                        }}>
+                          {log.photo_url
+                            ? <img src={log.photo_url} alt={log.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                            : log.name.charAt(0)
+                          }
                         </div>
                       </td>
-                      <td className="px-6 py-4">
-                        <p className="text-sm font-semibold text-white">{log.name}</p>
-                      </td>
-                      <td className="px-6 py-4">
-                        <p className="text-sm text-slate-400 font-mono">{log.nomor_induk}</p>
-                      </td>
-                      <td className="px-6 py-4">
-                        <p className="text-sm text-slate-300">{date}</p>
-                      </td>
-                      <td className="px-6 py-4">
-                        <p className="text-sm font-mono text-brand-accent">{time}</p>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="inline-block px-2.5 py-1 rounded-full text-xs font-semibold badge-hadir">
-                          {log.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          <div className="w-16 h-1.5 bg-dark-400 rounded-full overflow-hidden">
-                            <div
-                              className="h-full rounded-full bg-gradient-to-r from-brand-success to-brand-accent"
-                              style={{ width: `${log.confidence ?? 0}%` }}
-                            />
-                          </div>
-                          <span className="text-xs text-slate-400 font-mono">
-                            {log.confidence?.toFixed(1) ?? '—'}%
-                          </span>
-                        </div>
-                      </td>
+                      <td style={{ fontWeight: 500 }}>{log.name}</td>
+                      <td style={{ fontFamily: 'monospace', color: 'var(--color-text-secondary)' }}>{log.nomor_induk}</td>
+                      <td style={{ color: 'var(--color-text-secondary)' }}>{date}</td>
+                      <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--color-text-primary)' }}>{time}</td>
+                      <td><span className="badge badge-success">{log.status}</span></td>
+                      <td style={{ color: 'var(--color-text-secondary)' }}>{log.confidence?.toFixed(1) ?? '—'}%</td>
                     </tr>
                   );
                 })
@@ -124,13 +106,11 @@ export default function AttendanceTable({ logs }: AttendanceTableProps) {
             </tbody>
           </table>
         </div>
-
-        {/* Footer */}
         {filtered.length > 0 && (
-          <div className="px-6 py-3 border-t border-white/5 flex items-center justify-between">
-            <p className="text-xs text-slate-500">
+          <div style={{ padding: '10px 16px', borderTop: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
               Menampilkan {filtered.length} dari {logs.length} data
-            </p>
+            </span>
           </div>
         )}
       </div>
