@@ -35,6 +35,8 @@ services:
       # Detection settings
       CONFIDENCE_THRESHOLD: 80
       DEBOUNCE_MINUTES: 3
+      # Timezone Indonesia (WIB)
+      TZ: Asia/Jakarta
     volumes:
       - ./data:/data
       - ./backend/uploads:/app/uploads
