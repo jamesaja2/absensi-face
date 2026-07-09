@@ -13,7 +13,7 @@ type Tab = 'attendance' | 'users' | 'import';
 function parseDbTimestamp(ts: string): Date {
   const normalized = ts.replace(' ', 'T');
   if (normalized.endsWith('Z') || normalized.includes('+')) return new Date(normalized);
-  return new Date(normalized + '+07:00');
+  return new Date(normalized + 'Z'); // DB stores UTC without timezone suffix
 }
 
 export default function AdminDashboard() {

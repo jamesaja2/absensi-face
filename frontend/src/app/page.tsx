@@ -62,8 +62,11 @@ export default function KioskPage() {
   const formatTime = (date: Date) =>
     date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 
-  const formatLogTime = (timestamp: string) =>
-    new Date(timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  const formatLogTime = (timestamp: string) => {
+    const normalized = timestamp.replace(' ', 'T');
+    const d = new Date(normalized.endsWith('Z') || normalized.includes('+') ? normalized : normalized + 'Z');
+    return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' });
+  };
 
   const getInitial = (name: string) => name.charAt(0).toUpperCase();
 

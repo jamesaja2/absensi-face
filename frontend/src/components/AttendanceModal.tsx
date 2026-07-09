@@ -38,11 +38,11 @@ export default function AttendanceModal({
     };
   }, [autoDismissMs, onDismiss]);
 
-  const formattedTime = new Date(log.timestamp).toLocaleTimeString('id-ID', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
+  const formattedTime = (() => {
+    const normalized = log.timestamp.replace(' ', 'T');
+    const d = new Date(normalized.endsWith('Z') || normalized.includes('+') ? normalized : normalized + 'Z');
+    return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Jakarta' });
+  })();
 
   return (
     <div

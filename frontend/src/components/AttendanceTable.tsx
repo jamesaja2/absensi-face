@@ -7,12 +7,12 @@ interface AttendanceTableProps {
   logs: AttendanceLog[];
 }
 
-// Parse timestamp from DB (SQLite stores without tz info, treat as WIB = UTC+7)
+// Parse timestamp from DB (SQLite stores UTC without tz info)
+// Add 'Z' so JS treats it as UTC, then display in WIB (Asia/Jakarta)
 function parseDbTimestamp(ts: string): Date {
-  // Add +07:00 so JS parses it as WIB, not UTC
   const normalized = ts.replace(' ', 'T');
   if (normalized.endsWith('Z') || normalized.includes('+')) return new Date(normalized);
-  return new Date(normalized + '+07:00');
+  return new Date(normalized + 'Z'); // treat as UTC
 }
 
 export default function AttendanceTable({ logs }: AttendanceTableProps) {
