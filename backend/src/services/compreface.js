@@ -142,8 +142,18 @@ async function recognizeFaceFromBuffer(fileBuffer, originalName = 'photo.jpg') {
       form,
       { headers: form.getHeaders() }
     );
-    const latency = Date.now() - startTime;
-    console.log(`[CompreFace] Recognition completed in ${latency}ms`);
+    const networkLatency = Date.now() - startTime;
+    
+    // Extract CompreFace internal execution time if available
+    let internalTime = '';
+    if (response.data?.result?.[0]?.execution_time) {
+      const exec = response.data.result[0].execution_time;
+      const detector = exec.detector || 0;
+      const calculator = exec.calculator || 0;
+      internalTime = ` | AI Processing: ${detector + calculator}ms (Det: ${detector}ms, Calc: ${calculator}ms)`;
+    }
+
+    console.log(`[CompreFace] Network Roundtrip: ${networkLatency}ms${internalTime}`);
 
     return response.data;
   } catch (err) {
