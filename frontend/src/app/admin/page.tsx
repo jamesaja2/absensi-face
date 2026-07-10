@@ -53,19 +53,9 @@ export default function AdminLoginPage() {
 
         {/* Logo + title */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{
-            width: 48, height: 48, borderRadius: 12,
-            background: 'var(--color-accent)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            margin: '0 auto 16px',
-          }}>
-            <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="#fff" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round"
-                d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-            </svg>
-          </div>
+          <img src="/logo.png" alt="Logo PUSTEKOM" style={{ height: 56, margin: '0 auto 16px' }} />
           <h1 style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-text-primary)' }}>Admin Panel</h1>
-          <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 4 }}>Sistem Absensi Pengenalan Wajah</p>
+          <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 4 }}>Sistem Absensi Kapel PUSTEKOM by James</p>
         </div>
 
         {/* Card */}
@@ -140,8 +130,8 @@ export default function AdminLoginPage() {
           </form>
         </div>
 
-        <p style={{ textAlign: 'center', fontSize: 11, color: 'var(--color-text-muted)', marginTop: 20 }}>
-          Sistem Absensi Pengenalan Wajah © {new Date().getFullYear()}
+        <p style={{ textAlign: 'center', fontSize: 10, color: 'var(--color-text-muted)', marginTop: 20, lineHeight: 1.5 }}>
+          Copyright PUSTEKOM 2026. Sistem Absensi Kapel PUSTEKOM by James. All Right Reserved.
         </p>
       </div>
     </main>
