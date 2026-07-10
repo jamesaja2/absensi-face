@@ -138,7 +138,7 @@ async function recognizeFaceFromBuffer(fileBuffer, originalName = 'photo.jpg') {
 
     const startTime = Date.now();
     const response = await compreFaceAxios.post(
-      `/recognize?limit=1&det_prob_threshold=0.8&prediction_count=1`,
+      `/recognize?limit=1&det_prob_threshold=0.8&prediction_count=1&status=true`,
       form,
       { headers: form.getHeaders() }
     );
