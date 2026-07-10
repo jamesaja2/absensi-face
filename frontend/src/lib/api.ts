@@ -52,8 +52,11 @@ export const attendanceApi = {
     api.get('/attendance', { params }),
   getStatsToday: () => api.get('/attendance/stats/today'),
   exportCSV: (params?: { date?: string; user_id?: number }) => {
-    const queryStr = new URLSearchParams(params as Record<string, string>).toString();
-    window.open(`${BACKEND_URL}/api/attendance/export?${queryStr}`, '_blank');
+    const filtered: Record<string, string> = {};
+    if (params?.date) filtered.date = params.date;
+    if (params?.user_id) filtered.user_id = String(params.user_id);
+    const queryStr = new URLSearchParams(filtered).toString();
+    window.open(`${BACKEND_URL}/api/attendance/export${queryStr ? '?' + queryStr : ''}`, '_blank');
   },
   recognize: (blob: Blob) => {
     const form = new FormData();

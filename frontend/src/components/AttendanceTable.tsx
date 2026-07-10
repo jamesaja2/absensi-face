@@ -15,14 +15,27 @@ function parseDbTimestamp(ts: string): Date {
   return new Date(normalized + 'Z'); // treat as UTC
 }
 
+const PAGE_SIZE = 15;
+
 export default function AttendanceTable({ logs }: AttendanceTableProps) {
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
 
   const filtered = logs.filter(
     (log) =>
       log.name.toLowerCase().includes(search.toLowerCase()) ||
       log.nomor_induk.toLowerCase().includes(search.toLowerCase())
   );
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safeCurrentPage = Math.min(page, totalPages);
+  const paginated = filtered.slice((safeCurrentPage - 1) * PAGE_SIZE, safeCurrentPage * PAGE_SIZE);
+
+  // Reset to page 1 when search changes
+  const handleSearch = (val: string) => {
+    setSearch(val);
+    setPage(1);
+  };
 
   const formatDateTime = (timestamp: string) => {
     const d = parseDbTimestamp(timestamp);
@@ -45,7 +58,7 @@ export default function AttendanceTable({ logs }: AttendanceTableProps) {
           type="text"
           placeholder="Cari nama atau nomor induk..."
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => handleSearch(e.target.value)}
           className="input"
           style={{ paddingLeft: 38 }}
         />
@@ -68,18 +81,19 @@ export default function AttendanceTable({ logs }: AttendanceTableProps) {
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
+              {paginated.length === 0 ? (
                 <tr>
                   <td colSpan={8} style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--color-text-muted)' }}>
                     {search ? `Tidak ada hasil untuk "${search}"` : 'Belum ada data absensi'}
                   </td>
                 </tr>
               ) : (
-                filtered.map((log, idx) => {
+                paginated.map((log, idx) => {
                   const { date, time } = formatDateTime(log.timestamp);
+                  const globalIdx = (safeCurrentPage - 1) * PAGE_SIZE + idx + 1;
                   return (
                     <tr key={log.id}>
-                      <td style={{ color: 'var(--color-text-muted)', fontFamily: 'monospace', fontSize: 12 }}>{idx + 1}</td>
+                      <td style={{ color: 'var(--color-text-muted)', fontFamily: 'monospace', fontSize: 12 }}>{globalIdx}</td>
                       <td>
                         <div style={{
                           width: 32, height: 32, borderRadius: '50%',
@@ -106,11 +120,61 @@ export default function AttendanceTable({ logs }: AttendanceTableProps) {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination footer */}
         {filtered.length > 0 && (
-          <div style={{ padding: '10px 16px', borderTop: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{
+            padding: '10px 16px',
+            borderTop: '1px solid var(--color-border)',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          }}>
             <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
-              Menampilkan {filtered.length} dari {logs.length} data
+              Menampilkan {(safeCurrentPage - 1) * PAGE_SIZE + 1}–{Math.min(safeCurrentPage * PAGE_SIZE, filtered.length)} dari {filtered.length} data
             </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <button
+                onClick={() => setPage(Math.max(1, safeCurrentPage - 1))}
+                disabled={safeCurrentPage <= 1}
+                className="btn btn-ghost"
+                style={{ padding: '4px 8px', fontSize: 12, opacity: safeCurrentPage <= 1 ? 0.3 : 1 }}
+              >
+                ← Prev
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter(p => p === 1 || p === totalPages || Math.abs(p - safeCurrentPage) <= 1)
+                .reduce<(number | string)[]>((acc, p, idx, arr) => {
+                  if (idx > 0 && (arr[idx - 1] as number) < p - 1) acc.push('...');
+                  acc.push(p);
+                  return acc;
+                }, [])
+                .map((item, i) =>
+                  item === '...' ? (
+                    <span key={`dot-${i}`} style={{ padding: '0 4px', color: 'var(--color-text-muted)', fontSize: 12 }}>…</span>
+                  ) : (
+                    <button
+                      key={item}
+                      onClick={() => setPage(item as number)}
+                      className="btn"
+                      style={{
+                        padding: '4px 10px', fontSize: 12, minWidth: 32,
+                        background: item === safeCurrentPage ? 'var(--color-accent)' : 'transparent',
+                        color: item === safeCurrentPage ? '#fff' : 'var(--color-text-secondary)',
+                        border: item === safeCurrentPage ? 'none' : '1px solid var(--color-border)',
+                      }}
+                    >
+                      {item}
+                    </button>
+                  )
+                )}
+              <button
+                onClick={() => setPage(Math.min(totalPages, safeCurrentPage + 1))}
+                disabled={safeCurrentPage >= totalPages}
+                className="btn btn-ghost"
+                style={{ padding: '4px 8px', fontSize: 12, opacity: safeCurrentPage >= totalPages ? 0.3 : 1 }}
+              >
+                Next →
+              </button>
+            </div>
           </div>
         )}
       </div>

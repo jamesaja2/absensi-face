@@ -8,7 +8,6 @@ import AttendanceModal from '@/components/AttendanceModal';
 
 export default function KioskPage() {
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [todayStats, setTodayStats] = useState<TodayStats | null>(null);
   const [recentLogs, setRecentLogs] = useState<AttendanceLog[]>([]);
   const [activeModal, setActiveModal] = useState<{ log: AttendanceLog; message: string } | null>(null);
   const [socketConnected, setSocketConnected] = useState(false);
@@ -21,11 +20,7 @@ export default function KioskPage() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [statsRes, logsRes] = await Promise.all([
-          attendanceApi.getStatsToday(),
-          attendanceApi.getLogs({ limit: 8 }),
-        ]);
-        setTodayStats(statsRes.data);
+        const logsRes = await attendanceApi.getLogs({ limit: 8 });
         setRecentLogs(logsRes.data.logs);
       } catch (err) {
         console.error('Failed to load initial data:', err);
@@ -43,9 +38,6 @@ export default function KioskPage() {
     socket.on('attendance:new', (data: { log: AttendanceLog; message: string }) => {
       setActiveModal(data);
       setRecentLogs((prev) => [data.log, ...prev].slice(0, 8));
-      setTodayStats((prev) =>
-        prev ? { ...prev, totalAttendanceToday: prev.totalAttendanceToday + 1 } : prev
-      );
     });
     return () => {
       socket.off('connect');
@@ -84,23 +76,11 @@ export default function KioskPage() {
         justifyContent: 'space-between',
         flexShrink: 0,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {/* Logo icon */}
-          <div style={{
-            width: 34, height: 34, borderRadius: 8,
-            background: 'var(--color-accent)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="#fff" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round"
-                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round"
-                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-            </svg>
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <img src="/logo.png" alt="Logo PUSTEKOM" style={{ height: 40 }} />
           <div>
-            <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--color-text-primary)' }}>Sistem Absensi</div>
-            <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Pengenalan Wajah Otomatis</div>
+            <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--color-text-primary)' }}>Sistem Absensi Kapel PUSTEKOM</div>
+            <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>by James</div>
           </div>
         </div>
 
@@ -116,24 +96,14 @@ export default function KioskPage() {
         {/* LEFT — Camera column */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-          {/* Clock + stat */}
-          <div className="card" style={{ padding: '20px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div>
-              <div style={{ fontSize: 48, fontWeight: 700, letterSpacing: '-2px', lineHeight: 1, color: 'var(--color-text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                {formatTime(currentTime)}
-              </div>
-              <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 6, textTransform: 'capitalize' }}>
-                {formatDate(currentTime)}
-              </div>
+          {/* Clock only */}
+          <div className="card" style={{ padding: '20px 24px' }}>
+            <div style={{ fontSize: 48, fontWeight: 700, letterSpacing: '-2px', lineHeight: 1, color: 'var(--color-text-primary)', fontVariantNumeric: 'tabular-nums' }}>
+              {formatTime(currentTime)}
             </div>
-            {todayStats && (
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: 36, fontWeight: 700, color: 'var(--color-accent)' }}>
-                  {todayStats.totalAttendanceToday}
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>Hadir Hari Ini</div>
-              </div>
-            )}
+            <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 6, textTransform: 'capitalize' }}>
+              {formatDate(currentTime)}
+            </div>
           </div>
 
           {/* Camera */}
@@ -153,21 +123,8 @@ export default function KioskPage() {
           </div>
         </div>
 
-        {/* RIGHT — Stats + Activity */}
+        {/* RIGHT — Activity */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-          {/* Stats */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            {[
-              { label: 'Hadir Hari Ini', value: todayStats?.totalAttendanceToday ?? '—' },
-              { label: 'Total Karyawan', value: todayStats?.totalUsers ?? '—' },
-            ].map((s) => (
-              <div key={s.label} className="card" style={{ padding: 16, textAlign: 'center' }}>
-                <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--color-text-primary)' }}>{s.value}</div>
-                <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>{s.label}</div>
-              </div>
-            ))}
-          </div>
 
           {/* Recent activity */}
           <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -187,9 +144,7 @@ export default function KioskPage() {
                     display: 'flex', alignItems: 'center', gap: 12,
                     padding: '10px 16px',
                     borderBottom: '1px solid var(--color-border)',
-                    transition: 'background 0.1s',
                   }}>
-                    {/* Avatar */}
                     <div style={{
                       width: 36, height: 36, borderRadius: '50%',
                       background: 'var(--color-accent-light)',
@@ -221,8 +176,9 @@ export default function KioskPage() {
             </div>
           </div>
 
-          <div style={{ textAlign: 'center', fontSize: 11, color: 'var(--color-text-muted)' }}>
-            Sistem Absensi Pengenalan Wajah — ArcFace R100
+          {/* Copyright footer */}
+          <div style={{ textAlign: 'center', fontSize: 10, color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
+            Copyright PUSTEKOM 2026. Sistem Absensi Kapel PUSTEKOM by James. All Right Reserved.
           </div>
         </div>
       </div>

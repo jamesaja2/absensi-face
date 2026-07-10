@@ -22,39 +22,30 @@ export default function CameraFeed({ className = '' }: CameraFeedProps) {
     const context = canvas.getContext('2d');
     if (!context) return;
 
-    // Set canvas dimensions to match video
     if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
     }
 
-    // Draw frame to canvas
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    // Convert to blob and send
     canvas.toBlob(async (blob) => {
       if (!blob) return;
       try {
         await attendanceApi.recognize(blob);
-        // The backend handles the confidence check and socket emission,
-        // so we don't need to do anything here if it's successful.
       } catch (err) {
-        // Silently ignore recognition errors on the client side to avoid spam
+        // Silently ignore recognition errors
       }
     }, 'image/jpeg', 0.8);
   }, [status]);
 
-  // Capture interval (every 2 seconds)
   useEffect(() => {
     if (status === 'active') {
       intervalRef.current = setInterval(captureFrame, 2000);
     } else if (intervalRef.current) {
       clearInterval(intervalRef.current);
     }
-
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [status, captureFrame]);
 
   useEffect(() => {
@@ -63,14 +54,9 @@ export default function CameraFeed({ className = '' }: CameraFeedProps) {
     async function startCamera() {
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            facingMode: 'user',
-          },
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
           audio: false,
         });
-
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           setStatus('active');
@@ -90,81 +76,57 @@ export default function CameraFeed({ className = '' }: CameraFeedProps) {
     }
 
     startCamera();
-
-    return () => {
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
-      }
-    };
+    return () => { if (stream) stream.getTracks().forEach((track) => track.stop()); };
   }, []);
 
   return (
-    <div className={`relative overflow-hidden rounded-2xl bg-dark-700 ${className}`}>
-      {/* Camera feed */}
+    <div className={`relative overflow-hidden ${className}`} style={{ borderRadius: 12, background: '#f1f5f9', border: '1px solid var(--color-border)' }}>
       <video
         ref={videoRef}
         autoPlay
         playsInline
         muted
-        className={`w-full h-full object-cover transition-opacity duration-500 ${
-          status === 'active' ? 'opacity-100' : 'opacity-0'
-        }`}
-        style={{ transform: 'scaleX(-1)' }} // Mirror effect
+        style={{
+          width: '100%', height: '100%', objectFit: 'cover',
+          transform: 'scaleX(-1)',
+          opacity: status === 'active' ? 1 : 0,
+          transition: 'opacity 0.5s',
+        }}
       />
+      <canvas ref={canvasRef} style={{ display: 'none' }} />
 
-      {/* Hidden canvas for capturing frames */}
-      <canvas ref={canvasRef} className="hidden" />
-
-      {/* Loading state */}
+      {/* Loading */}
       {status === 'loading' && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-dark-700">
-          <div className="relative w-16 h-16 mb-4">
-            <div className="absolute inset-0 rounded-full border-2 border-brand-primary opacity-20 animate-ping-slow" />
-            <div className="absolute inset-2 rounded-full border-2 border-t-brand-primary border-r-transparent border-b-transparent border-l-transparent animate-spin" />
-            <svg
-              className="absolute inset-3 w-10 h-10 text-brand-primary"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" />
-            </svg>
-          </div>
-          <p className="text-sm text-slate-400 animate-pulse">Menghubungkan ke kamera...</p>
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9' }}>
+          <div style={{ width: 32, height: 32, border: '3px solid var(--color-border)', borderTopColor: 'var(--color-accent)', borderRadius: '50%', animation: 'spin 0.7s linear infinite', marginBottom: 12 }} />
+          <p style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>Menghubungkan ke kamera...</p>
         </div>
       )}
 
-      {/* Error / denied state */}
+      {/* Error */}
       {(status === 'denied' || status === 'error') && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-dark-700 p-6 text-center">
-          <div className="w-16 h-16 mb-4 rounded-full bg-red-500/10 flex items-center justify-center">
-            <svg className="w-8 h-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-            </svg>
-          </div>
-          <p className="text-sm text-red-400 font-medium mb-1">Kamera Tidak Tersedia</p>
-          <p className="text-xs text-slate-500">{errorMessage}</p>
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', padding: 24, textAlign: 'center' }}>
+          <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="var(--color-danger)" strokeWidth={1.5} style={{ marginBottom: 12 }}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+          </svg>
+          <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-danger)', marginBottom: 4 }}>Kamera Tidak Tersedia</p>
+          <p style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{errorMessage}</p>
         </div>
       )}
 
-      {/* Active overlay — corner brackets */}
+      {/* Active overlay */}
       {status === 'active' && (
         <>
           {/* Corner brackets */}
-          <div className="absolute top-3 left-3 w-8 h-8 border-t-2 border-l-2 border-brand-accent opacity-60 rounded-tl" />
-          <div className="absolute top-3 right-3 w-8 h-8 border-t-2 border-r-2 border-brand-accent opacity-60 rounded-tr" />
-          <div className="absolute bottom-3 left-3 w-8 h-8 border-b-2 border-l-2 border-brand-accent opacity-60 rounded-bl" />
-          <div className="absolute bottom-3 right-3 w-8 h-8 border-b-2 border-r-2 border-brand-accent opacity-60 rounded-br" />
-
-          {/* Scan line */}
-          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-brand-accent to-transparent scan-line opacity-50" />
+          <div style={{ position: 'absolute', top: 12, left: 12, width: 24, height: 24, borderTop: '2px solid rgba(37,99,235,0.5)', borderLeft: '2px solid rgba(37,99,235,0.5)', borderRadius: '4px 0 0 0' }} />
+          <div style={{ position: 'absolute', top: 12, right: 12, width: 24, height: 24, borderTop: '2px solid rgba(37,99,235,0.5)', borderRight: '2px solid rgba(37,99,235,0.5)', borderRadius: '0 4px 0 0' }} />
+          <div style={{ position: 'absolute', bottom: 12, left: 12, width: 24, height: 24, borderBottom: '2px solid rgba(37,99,235,0.5)', borderLeft: '2px solid rgba(37,99,235,0.5)', borderRadius: '0 0 0 4px' }} />
+          <div style={{ position: 'absolute', bottom: 12, right: 12, width: 24, height: 24, borderBottom: '2px solid rgba(37,99,235,0.5)', borderRight: '2px solid rgba(37,99,235,0.5)', borderRadius: '0 0 4px 0' }} />
 
           {/* Live badge */}
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1 rounded-full bg-black/50 backdrop-blur-sm border border-white/10">
-            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-            <span className="text-xs font-medium text-white/70 tracking-widest uppercase">Live</span>
+          <div style={{ position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 99, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ef4444', animation: 'pulse-dot 2s infinite' }} />
+            <span style={{ fontSize: 10, fontWeight: 600, color: '#fff', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Live</span>
           </div>
         </>
       )}

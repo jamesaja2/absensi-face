@@ -29,8 +29,8 @@ export default function UserForm({ user, onSave, onClose }: UserFormProps) {
     reader.readAsDataURL(file);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!name || !nomorInduk) {
       toast.error('Nama dan Nomor Induk wajib diisi');
       return;
@@ -51,8 +51,7 @@ export default function UserForm({ user, onSave, onClose }: UserFormProps) {
       }
       onSave();
     } catch (err: any) {
-      const msg = err.response?.data?.error || 'Gagal menyimpan data';
-      toast.error(msg);
+      toast.error(err.response?.data?.error || 'Gagal menyimpan data');
     } finally {
       setLoading(false);
     }
@@ -62,66 +61,73 @@ export default function UserForm({ user, onSave, onClose }: UserFormProps) {
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm animate-fade-in"
+        style={{ position: 'fixed', inset: 0, zIndex: 40, background: 'rgba(0,0,0,0.3)' }}
         onClick={onClose}
       />
 
       {/* Drawer */}
-      <div className="fixed top-0 right-0 bottom-0 z-50 w-full max-w-md bg-dark-500 border-l border-white/10 shadow-2xl animate-slide-up flex flex-col">
+      <div style={{
+        position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 50,
+        width: '100%', maxWidth: 420,
+        background: '#fff',
+        borderLeft: '1px solid var(--color-border)',
+        boxShadow: '-20px 0 60px rgba(0,0,0,0.1)',
+        display: 'flex', flexDirection: 'column',
+      }}>
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-white/5">
-          <h2 className="text-lg font-bold text-white">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', borderBottom: '1px solid var(--color-border)' }}>
+          <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--color-text-primary)' }}>
             {isEdit ? 'Edit Karyawan' : 'Tambah Karyawan'}
           </h2>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-dark-400 transition-colors"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          <button onClick={onClose} className="btn btn-ghost" style={{ padding: 6 }}>
+            <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-6 py-6 space-y-5">
-          {/* Photo preview + upload */}
-          <div className="flex flex-col items-center gap-3">
+        <form onSubmit={handleSubmit} style={{ flex: 1, overflowY: 'auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {/* Photo preview */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
             <div
-              className="w-24 h-24 rounded-full overflow-hidden bg-dark-600 border-2 border-dashed border-brand-primary/40 flex items-center justify-center cursor-pointer hover:border-brand-primary transition-colors relative"
               onClick={() => fileRef.current?.click()}
+              style={{
+                width: 80, height: 80, borderRadius: '50%',
+                border: '2px dashed var(--color-border-strong)',
+                background: 'var(--color-bg)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', overflow: 'hidden',
+              }}
             >
               {photoPreview ? (
-                <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+                <img src={photoPreview} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               ) : (
-                <div className="flex flex-col items-center gap-1 text-slate-500">
-                  <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                  <span className="text-xs">Upload</span>
-                </div>
+                <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="var(--color-text-muted)" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
               )}
             </div>
-            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
-            <p className="text-xs text-slate-500">Klik untuk upload foto (opsional)</p>
+            <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileChange} />
+            <p style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Klik untuk upload foto (opsional)</p>
           </div>
 
           {/* Name */}
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">Nama Lengkap *</label>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-text-primary)', marginBottom: 6 }}>Nama Lengkap *</label>
             <input
               id="user-name"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Masukkan nama lengkap"
-              className="w-full bg-dark-600 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:border-brand-primary input-glow transition-all text-sm"
+              className="input"
             />
           </div>
 
           {/* Nomor Induk */}
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">Nomor Induk *</label>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-text-primary)', marginBottom: 6 }}>Nomor Induk *</label>
             <input
               id="user-nomor-induk"
               type="text"
@@ -129,65 +135,50 @@ export default function UserForm({ user, onSave, onClose }: UserFormProps) {
               onChange={(e) => setNomorInduk(e.target.value)}
               placeholder="e.g. 12345678"
               disabled={isEdit}
-              className="w-full bg-dark-600 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:border-brand-primary input-glow transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              className="input"
+              style={isEdit ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
             />
-            {isEdit && <p className="text-xs text-slate-500 mt-1">Nomor Induk tidak dapat diubah setelah dibuat.</p>}
+            {isEdit && <p style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>Nomor Induk tidak dapat diubah setelah dibuat.</p>}
           </div>
 
-          {/* Photo URL (alternative) */}
+          {/* Photo URL */}
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
-              URL Foto <span className="text-slate-500 font-normal">(alternatif upload)</span>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-text-primary)', marginBottom: 6 }}>
+              URL Foto <span style={{ fontWeight: 400, color: 'var(--color-text-muted)' }}>(alternatif upload)</span>
             </label>
             <input
               id="user-photo-url"
               type="url"
               value={photoUrl}
-              onChange={(e) => {
-                setPhotoUrl(e.target.value);
-                if (e.target.value) setPhotoPreview(e.target.value);
-              }}
+              onChange={(e) => { setPhotoUrl(e.target.value); if (e.target.value) setPhotoPreview(e.target.value); }}
               placeholder="https://..."
-              className="w-full bg-dark-600 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:border-brand-primary input-glow transition-all text-sm"
+              className="input"
             />
           </div>
 
           {isEdit && user?.compreface_subject_id && (
-            <div className="glass rounded-xl px-4 py-3 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-brand-success" />
-              <p className="text-xs text-slate-400">
-                CompreFace Subject: <span className="text-brand-accent font-mono">{user.compreface_subject_id}</span>
+            <div className="card" style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span className="status-dot online" />
+              <p style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>
+                CompreFace Subject: <span style={{ fontFamily: 'monospace', color: 'var(--color-accent)' }}>{user.compreface_subject_id}</span>
               </p>
             </div>
           )}
         </form>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-white/5 flex gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex-1 py-2.5 rounded-xl text-sm font-medium text-slate-400 bg-dark-600 hover:bg-dark-400 transition-colors"
-          >
+        <div style={{ padding: '16px 24px', borderTop: '1px solid var(--color-border)', display: 'flex', gap: 12 }}>
+          <button type="button" onClick={onClose} className="btn btn-secondary" style={{ flex: 1, padding: '10px 16px' }}>
             Batal
           </button>
           <button
             id="save-user"
-            type="submit"
-            form="user-form"
             disabled={loading}
-            onClick={handleSubmit}
-            className="flex-1 py-2.5 rounded-xl text-sm font-medium text-white bg-gradient-to-r from-brand-primary to-brand-secondary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            onClick={() => handleSubmit()}
+            className="btn btn-primary"
+            style={{ flex: 1, padding: '10px 16px' }}
           >
-            {loading ? (
-              <span className="flex items-center justify-center gap-2">
-                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-                Menyimpan...
-              </span>
-            ) : isEdit ? 'Simpan Perubahan' : 'Tambah Karyawan'}
+            {loading ? <><div className="spinner" /> Menyimpan...</> : isEdit ? 'Simpan Perubahan' : 'Tambah Karyawan'}
           </button>
         </div>
       </div>

@@ -6,9 +6,9 @@ import { Toaster } from 'react-hot-toast';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Sistem Absensi Wajah | Facial Recognition Attendance',
-  description: 'Sistem absensi berbasis pengenalan wajah menggunakan AI',
-  keywords: 'absensi, facial recognition, attendance, CompreFace',
+  title: 'Sistem Absensi Kapel PUSTEKOM | by James',
+  description: 'Sistem absensi berbasis pengenalan wajah menggunakan AI - PUSTEKOM',
+  keywords: 'absensi, facial recognition, attendance, PUSTEKOM, CompreFace',
 };
 
 export default function RootLayout({
@@ -21,15 +21,16 @@ export default function RootLayout({
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
       </head>
-      <body className={`${inter.className} bg-dark-800 text-white antialiased`}>
+      <body className={`${inter.className} antialiased`} style={{ background: '#f8f9fa', color: '#111827' }}>
         {children}
         <Toaster
           position="top-right"
           toastOptions={{
             style: {
-              background: '#1e1e2e',
-              color: '#fff',
-              border: '1px solid rgba(99, 102, 241, 0.3)',
+              background: '#fff',
+              color: '#111827',
+              border: '1px solid #e5e7eb',
+              fontSize: 13,
             },
           }}
         />
