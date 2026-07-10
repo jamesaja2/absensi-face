@@ -136,11 +136,14 @@ async function recognizeFaceFromBuffer(fileBuffer, originalName = 'photo.jpg') {
       contentType: 'image/jpeg',
     });
 
+    const startTime = Date.now();
     const response = await compreFaceAxios.post(
       `/recognize?limit=1&det_prob_threshold=0.8&prediction_count=1`,
       form,
       { headers: form.getHeaders() }
     );
+    const latency = Date.now() - startTime;
+    console.log(`[CompreFace] Recognition completed in ${latency}ms`);
 
     return response.data;
   } catch (err) {
