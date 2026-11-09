@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { attendanceApi } from '@/lib/api';
-import { ShieldCheck, Camera, AlertCircle, RefreshCw, Lock, Video } from 'lucide-react';
+import { ShieldCheck, Camera, AlertCircle, RefreshCw, Download, ExternalLink } from 'lucide-react';
 
 interface CameraFeedProps {
   className?: string;
@@ -26,7 +26,7 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
   const captureCanvasRef = useRef<HTMLCanvasElement>(null);
 
-  const [status, setStatus] = useState<'loading' | 'active' | 'denied' | 'insecure' | 'error'>('loading');
+  const [status, setStatus] = useState<'loading' | 'active' | 'denied' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [detectedFaces, setDetectedFaces] = useState<DetectedFaceBox[]>([]);
@@ -253,7 +253,7 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
     if (status === 'active') {
-      interval = setInterval(captureFrame, 1600);
+      interval = setInterval(captureFrame, 1800);
     }
     return () => {
       if (interval) clearInterval(interval);
@@ -261,103 +261,57 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
     };
   }, [status, captureFrame]);
 
-  // Initialize camera with progressive fallback
-  const startCamera = useCallback(async () => {
+  // Direct, simple Camera Initialization matching original commit
+  const initCamera = useCallback(async () => {
     setStatus('loading');
     setErrorMessage('');
 
-    // Stop existing stream if any
-    if (videoRef.current && videoRef.current.srcObject) {
-      try {
-        const oldStream = videoRef.current.srcObject as MediaStream;
-        oldStream.getTracks().forEach((t) => t.stop());
-      } catch {}
-      videoRef.current.srcObject = null;
-    }
-
-    // Check secure context
-    if (typeof window !== 'undefined') {
-      const isHttp = window.location.protocol === 'http:';
-      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      if (isHttp && !isLocal && (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)) {
-        setStatus('insecure');
-        setErrorMessage(
-          'Browser memblokir kamera pada koneksi HTTP. Silakan buka melalui HTTPS: https://' +
-            window.location.hostname +
-            '/'
-        );
-        return;
-      }
-    }
-
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setStatus('error');
-      setErrorMessage('Browser tidak mendukung WebRTC Camera API. Gunakan Chrome, Safari, atau Edge terbaru.');
+      setErrorMessage('Browser tidak menyediakan WebRTC Camera API. Pastikan menggunakan Safari, Chrome, atau Edge terbaru.');
       return;
     }
 
     let stream: MediaStream | null = null;
 
-    // Try standard constraint first for maximum compatibility
-    const constraintList: MediaStreamConstraints[] = [
-      { video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }, audio: false },
-      { video: { facingMode: 'user' }, audio: false },
-      { video: true, audio: false },
-    ];
-
-    let lastError: any = null;
-
-    for (const constraints of constraintList) {
+    try {
       try {
-        stream = await navigator.mediaDevices.getUserMedia(constraints);
-        if (stream) break;
-      } catch (err: any) {
-        lastError = err;
-        // If permission was denied by user, further constraints will also fail immediately
-        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-          break;
-        }
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+          audio: false,
+        });
+      } catch (e1) {
+        // Fallback to basic constraint
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       }
-    }
 
-    if (stream && videoRef.current) {
-      const video = videoRef.current;
-      video.srcObject = stream;
-      video.setAttribute('playsinline', 'true');
-      video.setAttribute('autoplay', 'true');
-      video.muted = true;
-
-      try {
-        await video.play();
-      } catch (playErr) {
-        console.warn('Video play warning:', playErr);
+      if (videoRef.current && stream) {
+        videoRef.current.srcObject = stream;
+        setStatus('active');
       }
-      setStatus('active');
-      return;
-    }
-
-    // Handle failure
-    if (lastError?.name === 'NotAllowedError' || lastError?.name === 'PermissionDeniedError') {
-      setStatus('denied');
-      setErrorMessage('Izin kamera diblokir oleh browser untuk alamat situs ini.');
-    } else if (lastError?.name === 'NotFoundError' || lastError?.name === 'DevicesNotFoundError') {
-      setStatus('error');
-      setErrorMessage('Tidak ada sensor kamera yang terdeteksi di perangkat Anda.');
-    } else {
-      setStatus('error');
-      setErrorMessage(lastError?.message || 'Gagal menyalakan sensor kamera.');
+    } catch (err: any) {
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setStatus('denied');
+        setErrorMessage('Izin kamera ditolak di browser untuk alamat situs ini.');
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        setStatus('error');
+        setErrorMessage('Tidak ada kamera yang terdeteksi di perangkat Anda.');
+      } else {
+        setStatus('error');
+        setErrorMessage(`Error: ${err.message || 'Kamera sedang digunakan aplikasi lain'}`);
+      }
     }
   }, []);
 
   useEffect(() => {
-    startCamera();
+    initCamera();
     return () => {
       if (videoRef.current && videoRef.current.srcObject) {
         const stream = videoRef.current.srcObject as MediaStream;
         stream.getTracks().forEach((track) => track.stop());
       }
     };
-  }, [startCamera]);
+  }, [initCamera]);
 
   return (
     <div
@@ -371,10 +325,14 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
         autoPlay
         playsInline
         muted
-        className={`w-full h-full object-cover transition-opacity duration-300 ${
-          status === 'active' ? 'opacity-100' : 'opacity-0'
-        }`}
-        style={{ transform: 'scaleX(-1)' }}
+        style={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+          transform: 'scaleX(-1)',
+          opacity: status === 'active' ? 1 : 0,
+          transition: 'opacity 0.4s',
+        }}
       />
 
       {/* Canvas Overlay for corner brackets and labels */}
@@ -415,84 +373,57 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
       {status === 'loading' && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-50 text-slate-600 space-y-3 p-6 text-center">
           <div className="w-8 h-8 border-3 border-slate-300 border-t-blue-600 rounded-full animate-spin" />
-          <p className="text-xs font-medium text-slate-600">Menghubungkan ke sensor kamera...</p>
-        </div>
-      )}
-
-      {/* Insecure Context (HTTP instead of HTTPS) Notice */}
-      {status === 'insecure' && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-white text-center p-8 space-y-4">
-          <div className="w-12 h-12 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600">
-            <Lock size={22} />
-          </div>
-          <div>
-            <h4 className="text-sm font-bold text-slate-900 mb-1">Akses Kamera Memerlukan HTTPS</h4>
-            <p className="text-xs text-slate-600 max-w-sm mb-4">{errorMessage}</p>
-            <a
-              href={`https://${typeof window !== 'undefined' ? window.location.hostname : '192.168.100.52'}/`}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-md shadow-sm transition-colors"
-            >
-              <span>Buka dengan HTTPS</span>
-            </a>
-          </div>
+          <p className="text-xs font-medium text-slate-600">Menghubungkan ke kamera...</p>
         </div>
       )}
 
       {/* Permission Denied State with Clear Step-by-Step Guide */}
-      {status === 'denied' && (
+      {(status === 'denied' || status === 'error') && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-white text-center p-6 sm:p-8 space-y-4 overflow-y-auto">
           <div className="w-12 h-12 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 shrink-0">
-            <Video size={22} />
+            <Camera size={22} />
           </div>
           <div className="max-w-md">
-            <h4 className="text-sm font-bold text-slate-900 mb-1">Izin Kamera Belum Diaktifkan di Browser</h4>
-            <p className="text-xs text-slate-600 mb-4 leading-relaxed">
-              Browser Anda memblokir akses sensor kamera untuk alamat ini. Ikuti salah satu langkah berikut untuk mengizinkan:
+            <h4 className="text-sm font-bold text-slate-900 mb-1">Akses Kamera Belum Aktif</h4>
+            <p className="text-xs text-slate-600 mb-3 leading-relaxed">
+              {errorMessage}
             </p>
 
             {/* Platform Instructions Box */}
-            <div className="text-left bg-slate-50 border border-slate-200 rounded-lg p-3.5 space-y-2.5 text-xs text-slate-700 mb-4">
+            <div className="text-left bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-2 text-xs text-slate-700 mb-3">
               <div className="flex items-start gap-2">
                 <span className="font-bold text-blue-700 shrink-0">Safari:</span>
                 <span>
-                  Klik menu <strong>Safari</strong> (di kiri atas Mac) &gt; <strong>Settings for This Website...</strong> &gt; ubah <strong>Camera</strong> menjadi <strong>Allow (Izinkan)</strong>.
+                  Buka menu <strong>Safari</strong> (di kiri atas Mac) &gt; <strong>Settings...</strong> &gt; tab <strong>Websites</strong> &gt; <strong>Camera</strong> &gt; ubah <code>192.168.100.52</code> menjadi <strong>Allow (Izinkan)</strong>.
                 </span>
               </div>
               <div className="flex items-start gap-2 border-t border-slate-200 pt-2">
-                <span className="font-bold text-blue-700 shrink-0">Chrome:</span>
+                <span className="font-bold text-blue-700 shrink-0">Sertifikat SSL:</span>
                 <span>
-                  Klik ikon <strong>Setelan / Gembok</strong> di sebelah kiri address bar &gt; ubah <strong>Camera</strong> ke <strong>Allow (Izinkan)</strong>.
+                  Jika muncul &quot;Not Secure&quot;, Anda dapat mengunduh sertifikat SSL server dan klik <em>Always Trust</em> di Mac Keychain.
                 </span>
               </div>
             </div>
 
-            <button
-              onClick={startCamera}
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#0051C3] hover:bg-[#0045A5] text-white text-xs font-semibold rounded-md shadow-sm transition-colors"
-            >
-              <RefreshCw size={13} />
-              <span>Coba Lagi / Aktifkan Kamera</span>
-            </button>
-          </div>
-        </div>
-      )}
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <button
+                onClick={initCamera}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-[#0051C3] hover:bg-[#0045A5] text-white text-xs font-semibold rounded shadow-sm transition-colors"
+              >
+                <RefreshCw size={13} />
+                <span>Coba Nyalakan Kamera</span>
+              </button>
 
-      {/* Generic Error State */}
-      {status === 'error' && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-white text-center p-8 space-y-3">
-          <div className="w-12 h-12 rounded-full bg-red-50 border border-red-200 flex items-center justify-center text-red-600">
-            <AlertCircle size={22} />
-          </div>
-          <div>
-            <h4 className="text-sm font-bold text-slate-900 mb-1">Kamera Tidak Dapat Diakses</h4>
-            <p className="text-xs text-slate-600 max-w-sm mb-4">{errorMessage}</p>
-            <button
-              onClick={startCamera}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 text-xs font-semibold rounded-md transition-colors"
-            >
-              <RefreshCw size={13} />
-              <span>Coba Lagi</span>
-            </button>
+              <a
+                href="/absensi.crt"
+                download="absensi.crt"
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 text-xs font-medium rounded transition-colors"
+                title="Unduh sertifikat SSL untuk dipasang di Keychain macOS"
+              >
+                <Download size={13} />
+                <span>Unduh SSL (.crt)</span>
+              </a>
+            </div>
           </div>
         </div>
       )}
