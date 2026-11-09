@@ -80,37 +80,34 @@ async function checkLiveness(imageBuffer, box) {
       return { is_real: false, score: 0.0, label: 'invalid_box', bypassed: false };
     }
 
-    // MiniFASNet 2.7x scale centered on the face box to include bezel/background cues
-    const scale = 2.7;
-    const center_x = x1 + box_w / 2;
-    const center_y = y1 + box_h / 2;
+    // MiniFASNet scale margin around the face bounding box
+    const scale = 1.6;
+    const cx = x1 + box_w / 2;
+    const cy = y1 + box_h / 2;
 
-    const new_w = box_w * scale;
-    const new_h = box_h * scale;
+    const actualScale = Math.min((src_h - 1) / box_h, Math.min((src_w - 1) / box_w, scale));
+    const nw = Math.max(10, Math.round(box_w * actualScale));
+    const nh = Math.max(10, Math.round(box_h * actualScale));
 
-    const nx1 = Math.max(0, Math.floor(center_x - new_w / 2));
-    const ny1 = Math.max(0, Math.floor(center_y - new_h / 2));
-    const nx2 = Math.min(src_w, Math.ceil(center_x + new_w / 2));
-    const ny2 = Math.min(src_h, Math.ceil(center_y + new_h / 2));
-
-    const crop_w = Math.max(1, nx2 - nx1);
-    const crop_h = Math.max(1, ny2 - ny1);
+    const left = Math.max(0, Math.min(src_w - nw, Math.round(cx - nw / 2)));
+    const top = Math.max(0, Math.min(src_h - nh, Math.round(cy - nh / 2)));
 
     // Extract crop, resize to 80x80, get raw RGB pixels
     const rawBuffer = await image
-      .extract({ left: nx1, top: ny1, width: crop_w, height: crop_h })
+      .extract({ left, top, width: nw, height: nh })
       .resize(80, 80, { fit: 'fill' })
       .raw()
       .toBuffer();
 
-    // Convert raw RGB to BGR CHW float32 normalized [0.0, 1.0]
+    // Convert raw RGB to BGR CHW float32 with RAW PIXEL VALUES [0.0, 255.0]
+    // MiniFASNet was trained on raw [0, 255] float values (not divided by 255)!
     const float32Data = new Float32Array(1 * 3 * 80 * 80);
     const numPixels = 80 * 80;
 
     for (let i = 0; i < numPixels; i++) {
-      const r = rawBuffer[i * 3 + 0] / 255.0;
-      const g = rawBuffer[i * 3 + 1] / 255.0;
-      const b = rawBuffer[i * 3 + 2] / 255.0;
+      const r = rawBuffer[i * 3 + 0];
+      const g = rawBuffer[i * 3 + 1];
+      const b = rawBuffer[i * 3 + 2];
 
       // Channel 0: B, Channel 1: G, Channel 2: R
       float32Data[0 * numPixels + i] = b;
@@ -131,17 +128,17 @@ async function checkLiveness(imageBuffer, box) {
     const rawOutput = results[outputName].data;
 
     // Apply Softmax across the 3 classes:
-    // Class 0: Live (Genuine human face)
-    // Class 1: Print-attack (Photo on paper)
+    // Class 0: Print-attack (Photo on paper)
+    // Class 1: Real / Live face (Genuine human)
     // Class 2: Replay-attack (Screen / Monitor / Mobile phone)
     const maxVal = Math.max(...rawOutput);
     const exps = Array.from(rawOutput).map(v => Math.exp(v - maxVal));
     const sum = exps.reduce((a, b) => a + b, 0);
     const probs = exps.map(v => v / sum);
 
-    const liveScore = probs[0];    // Class 0 is Live human face
-    const printScore = probs[1];   // Class 1 is Print attack
-    const replayScore = probs[2];  // Class 2 is Screen/Replay attack
+    const printScore = probs[0];  // Class 0 is 2D Print attack
+    const liveScore = probs[1];   // Class 1 is REAL LIVE human face
+    const replayScore = probs[2]; // Class 2 is Screen/Replay attack
 
     const isReal = liveScore >= ANTISPOOF_THRESHOLD;
 
@@ -162,7 +159,6 @@ async function checkLiveness(imageBuffer, box) {
     };
   } catch (err) {
     console.error(`[Anti-Spoof] Liveness check error: ${err.message}`);
-    // Fail-open with warning if error occurs
     return { is_real: true, score: 1.0, label: 'error_fallback', bypassed: true };
   }
 }
@@ -171,4 +167,3 @@ module.exports = {
   initializeAntiSpoof,
   checkLiveness,
 };
-
