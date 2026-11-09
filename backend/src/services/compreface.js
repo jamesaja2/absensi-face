@@ -158,6 +158,10 @@ async function recognizeFaceFromBuffer(fileBuffer, originalName = 'photo.jpg') {
     return response.data;
   } catch (err) {
     if (err.response && err.response.data) {
+      // Code 28 in CompreFace means "No face is found in the given image" — return empty result gracefully
+      if (err.response.data.code === 28 || (typeof err.response.data.message === 'string' && err.response.data.message.includes('No face is found'))) {
+        return { result: [] };
+      }
       console.error(`[CompreFace] Recognition failed:`, err.response.data);
     }
     throw new Error(`CompreFace recognizeFace failed: ${err.message}`);
