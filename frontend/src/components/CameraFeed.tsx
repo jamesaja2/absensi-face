@@ -9,12 +9,14 @@ interface CameraFeedProps {
 }
 
 interface DetectedFaceBox {
-  status: 'recognized' | 'debounced' | 'spoof' | 'unknown' | 'low_confidence';
+  status: 'recognized' | 'debounced' | 'spoof' | 'unknown' | 'low_confidence' | 'already_attended' | 'not_attended';
   is_real: boolean;
   box: { x_min: number; y_min: number; x_max: number; y_max: number };
   name?: string;
+  user?: { name: string; nomor_induk?: string };
   confidence?: number;
   message?: string;
+  formatted_time?: string;
 }
 
 export default function CameraFeed({ className = '', onFacesDetected }: CameraFeedProps) {
