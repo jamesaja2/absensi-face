@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { attendanceApi } from '@/lib/api';
-import { ShieldCheck, Camera, AlertCircle, RefreshCw, Lock } from 'lucide-react';
+import { ShieldCheck, Camera, AlertCircle, RefreshCw, Lock, Video } from 'lucide-react';
 
 interface CameraFeedProps {
   className?: string;
@@ -32,7 +32,7 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
   const [detectedFaces, setDetectedFaces] = useState<DetectedFaceBox[]>([]);
   const clearTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Safe rounded rect helper that never crashes across different browser versions
+  // Safe rounded rect helper
   const safeDrawRoundedRect = (
     ctx: CanvasRenderingContext2D,
     x: number,
@@ -45,7 +45,6 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
     if (typeof (ctx as any).roundRect === 'function') {
       (ctx as any).roundRect(x, y, w, h, radius);
     } else {
-      // Fallback
       ctx.moveTo(x + radius, y);
       ctx.lineTo(x + w - radius, y);
       ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
@@ -92,39 +91,42 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
       const mirroredX = canvas.width - (rawX2 * scaleX);
       const mirroredY = rawY1 * scaleY;
 
-      // Color scheme based on detection state
-      let strokeColor = '#0284c7'; // Blue
+      let strokeColor = '#0284c7';
       let badgeBg = '#0284c7';
       let title = 'MEMERIKSA...';
       let subtitle = '';
 
+      // Normalize confidence value (handle both 0-1 and 0-100)
+      const rawConf = face.confidence || 0;
+      const normConf = rawConf > 1 ? rawConf : rawConf * 100;
+
       if (face.status === 'spoof' || !face.is_real) {
-        strokeColor = '#dc2626'; // Red
+        strokeColor = '#dc2626';
         badgeBg = '#dc2626';
         title = 'PERINGATAN SPOOFING';
         subtitle = 'Layar HP / Foto Cetak Terdeteksi';
       } else if (face.status === 'recognized') {
-        strokeColor = '#16a34a'; // Green
+        strokeColor = '#16a34a';
         badgeBg = '#16a34a';
         title = (face.name || face.user?.name || 'HADIR').toUpperCase();
-        subtitle = `Terverifikasi (${(face.confidence || 0).toFixed(0)}%)`;
+        subtitle = `Terverifikasi (${Math.min(100, normConf).toFixed(0)}%)`;
       } else if (face.status === 'debounced') {
-        strokeColor = '#2563eb'; // Blue
+        strokeColor = '#2563eb';
         badgeBg = '#2563eb';
         title = (face.name || face.user?.name || 'SUDAH ABSEN').toUpperCase();
         subtitle = 'Sudah Tercatat';
       } else if (face.status === 'already_attended') {
-        strokeColor = '#2563eb'; // Blue
+        strokeColor = '#2563eb';
         badgeBg = '#2563eb';
         title = (face.name || face.user?.name || 'SUDAH ABSEN').toUpperCase();
         subtitle = `Waktu: ${face.formatted_time || 'Hari ini'}`;
       } else if (face.status === 'not_attended') {
-        strokeColor = '#d97706'; // Amber
+        strokeColor = '#d97706';
         badgeBg = '#d97706';
         title = (face.name || face.user?.name || 'BELUM ABSEN').toUpperCase();
         subtitle = 'Status: Belum Absen Hari Ini';
       } else if (face.status === 'low_confidence' || face.status === 'unknown') {
-        strokeColor = '#64748b'; // Slate
+        strokeColor = '#64748b';
         badgeBg = '#475569';
         title = 'TIDAK DIKENAL';
         subtitle = 'Wajah Belum Terdaftar';
@@ -264,6 +266,15 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
     setStatus('loading');
     setErrorMessage('');
 
+    // Stop existing stream if any
+    if (videoRef.current && videoRef.current.srcObject) {
+      try {
+        const oldStream = videoRef.current.srcObject as MediaStream;
+        oldStream.getTracks().forEach((t) => t.stop());
+      } catch {}
+      videoRef.current.srcObject = null;
+    }
+
     // Check secure context
     if (typeof window !== 'undefined') {
       const isHttp = window.location.protocol === 'http:';
@@ -271,9 +282,9 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
       if (isHttp && !isLocal && (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)) {
         setStatus('insecure');
         setErrorMessage(
-          'Browser memblokir kamera pada koneksi HTTP biasa. Silakan akses melalui HTTPS (contoh: https://' +
+          'Browser memblokir kamera pada koneksi HTTP. Silakan buka melalui HTTPS: https://' +
             window.location.hostname +
-            '/)'
+            '/'
         );
         return;
       }
@@ -287,38 +298,24 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
 
     let stream: MediaStream | null = null;
 
-    try {
-      // 1. Try ideal HD resolution
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
-        audio: false,
-      });
-    } catch (e1) {
+    // Try standard constraint first for maximum compatibility
+    const constraintList: MediaStreamConstraints[] = [
+      { video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }, audio: false },
+      { video: { facingMode: 'user' }, audio: false },
+      { video: true, audio: false },
+    ];
+
+    let lastError: any = null;
+
+    for (const constraints of constraintList) {
       try {
-        // 2. Fallback to default user camera
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'user' },
-          audio: false,
-        });
-      } catch (e2) {
-        try {
-          // 3. Fallback to any available video device
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: true,
-            audio: false,
-          });
-        } catch (err: any) {
-          if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-            setStatus('denied');
-            setErrorMessage('Izin kamera ditolak. Silakan klik ikon gembok / kamera di address bar browser untuk mengizinkan.');
-          } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-            setStatus('error');
-            setErrorMessage('Tidak ada sensor kamera yang terhubung pada perangkat ini.');
-          } else {
-            setStatus('error');
-            setErrorMessage(`Gagal mengakses kamera: ${err.message || 'Kamera sedang digunakan aplikasi lain'}`);
-          }
-          return;
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        if (stream) break;
+      } catch (err: any) {
+        lastError = err;
+        // If permission was denied by user, further constraints will also fail immediately
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          break;
         }
       }
     }
@@ -333,9 +330,22 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
       try {
         await video.play();
       } catch (playErr) {
-        console.warn('Video auto-play delayed until user interaction:', playErr);
+        console.warn('Video play warning:', playErr);
       }
       setStatus('active');
+      return;
+    }
+
+    // Handle failure
+    if (lastError?.name === 'NotAllowedError' || lastError?.name === 'PermissionDeniedError') {
+      setStatus('denied');
+      setErrorMessage('Izin kamera diblokir oleh browser untuk alamat situs ini.');
+    } else if (lastError?.name === 'NotFoundError' || lastError?.name === 'DevicesNotFoundError') {
+      setStatus('error');
+      setErrorMessage('Tidak ada sensor kamera yang terdeteksi di perangkat Anda.');
+    } else {
+      setStatus('error');
+      setErrorMessage(lastError?.message || 'Gagal menyalakan sensor kamera.');
     }
   }, []);
 
@@ -353,7 +363,7 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
     <div
       ref={containerRef}
       className={`relative overflow-hidden bg-slate-900 border border-slate-300 rounded-lg select-none shadow-sm ${className}`}
-      style={{ minHeight: '340px' }}
+      style={{ minHeight: '360px' }}
     >
       {/* Video Feed */}
       <video
@@ -428,8 +438,47 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
         </div>
       )}
 
-      {/* Permission Denied or Error State */}
-      {(status === 'denied' || status === 'error') && (
+      {/* Permission Denied State with Clear Step-by-Step Guide */}
+      {status === 'denied' && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-white text-center p-6 sm:p-8 space-y-4 overflow-y-auto">
+          <div className="w-12 h-12 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 shrink-0">
+            <Video size={22} />
+          </div>
+          <div className="max-w-md">
+            <h4 className="text-sm font-bold text-slate-900 mb-1">Izin Kamera Belum Diaktifkan di Browser</h4>
+            <p className="text-xs text-slate-600 mb-4 leading-relaxed">
+              Browser Anda memblokir akses sensor kamera untuk alamat ini. Ikuti salah satu langkah berikut untuk mengizinkan:
+            </p>
+
+            {/* Platform Instructions Box */}
+            <div className="text-left bg-slate-50 border border-slate-200 rounded-lg p-3.5 space-y-2.5 text-xs text-slate-700 mb-4">
+              <div className="flex items-start gap-2">
+                <span className="font-bold text-blue-700 shrink-0">Safari:</span>
+                <span>
+                  Klik menu <strong>Safari</strong> (di kiri atas Mac) &gt; <strong>Settings for This Website...</strong> &gt; ubah <strong>Camera</strong> menjadi <strong>Allow (Izinkan)</strong>.
+                </span>
+              </div>
+              <div className="flex items-start gap-2 border-t border-slate-200 pt-2">
+                <span className="font-bold text-blue-700 shrink-0">Chrome:</span>
+                <span>
+                  Klik ikon <strong>Setelan / Gembok</strong> di sebelah kiri address bar &gt; ubah <strong>Camera</strong> ke <strong>Allow (Izinkan)</strong>.
+                </span>
+              </div>
+            </div>
+
+            <button
+              onClick={startCamera}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#0051C3] hover:bg-[#0045A5] text-white text-xs font-semibold rounded-md shadow-sm transition-colors"
+            >
+              <RefreshCw size={13} />
+              <span>Coba Lagi / Aktifkan Kamera</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Generic Error State */}
+      {status === 'error' && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-white text-center p-8 space-y-3">
           <div className="w-12 h-12 rounded-full bg-red-50 border border-red-200 flex items-center justify-center text-red-600">
             <AlertCircle size={22} />
@@ -439,7 +488,7 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
             <p className="text-xs text-slate-600 max-w-sm mb-4">{errorMessage}</p>
             <button
               onClick={startCamera}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 text-xs font-semibold rounded-md transition-colors"
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 text-xs font-semibold rounded-md transition-colors"
             >
               <RefreshCw size={13} />
               <span>Coba Lagi</span>

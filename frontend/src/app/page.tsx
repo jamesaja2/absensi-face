@@ -187,6 +187,14 @@ export default function KioskPage() {
     return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Jakarta' });
   };
 
+  const formatConfidence = (conf?: number | null) => {
+    if (conf === undefined || conf === null) return 'Hadir';
+    const num = Number(conf);
+    if (isNaN(num) || num <= 0) return 'Hadir';
+    const percentage = num > 1 ? num : num * 100;
+    return `${Math.min(100, percentage).toFixed(0)}% Cocok`;
+  };
+
   const getInitial = (name: string) => (name || '?').charAt(0).toUpperCase();
 
   const handleSaveKioskName = () => {
@@ -256,7 +264,7 @@ export default function KioskPage() {
           </button>
         </div>
 
-        {/* Right: Connection dot & Admin Portal Link */}
+        {/* Right: Connection dot */}
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
             <span
@@ -264,16 +272,8 @@ export default function KioskPage() {
                 socketConnected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'
               }`}
             />
-            <span className="hidden sm:inline">{socketConnected ? 'Online' : 'Offline'}</span>
+            <span>{socketConnected ? 'Online' : 'Offline'}</span>
           </div>
-
-          <a
-            href="/admin"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#0051C3] hover:bg-[#0045A5] text-white text-xs font-semibold shadow-sm transition-colors"
-          >
-            <span>Portal Admin</span>
-            <ArrowRight size={13} />
-          </a>
         </div>
       </header>
 
@@ -338,17 +338,6 @@ export default function KioskPage() {
           <div className="flex-1 min-h-[380px] relative">
             <CameraFeed className="w-full h-full" onFacesDetected={handleFacesDetected} />
           </div>
-
-          {/* Biometric Instruction Strip */}
-          <div className="bg-white border border-slate-200 rounded-lg px-4 py-3 flex items-center justify-between text-xs text-slate-600 shadow-sm">
-            <div className="flex items-center gap-2.5">
-              <ShieldCheck size={16} className="text-emerald-600 shrink-0" />
-              <span>
-                Arahkan wajah ke kamera. Sistem mengenali banyak wajah sekaligus dengan proteksi{' '}
-                <strong>Anti-Spoofing MiniFASNet</strong>.
-              </span>
-            </div>
-          </div>
         </div>
 
         {/* RIGHT COLUMN: Live Attendance Feed */}
@@ -408,7 +397,7 @@ export default function KioskPage() {
                         {formatLogTime(log.timestamp)}
                       </div>
                       <div className="text-[10px] text-slate-400 mt-0.5">
-                        {log.confidence ? `${(log.confidence * 100).toFixed(0)}% Cocok` : 'Hadir'}
+                        {formatConfidence(log.confidence)}
                       </div>
                     </div>
                   </div>

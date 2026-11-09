@@ -113,7 +113,7 @@ export default function AttendancePopup({
 
             {event.confidence && (
               <span className="text-[11px] font-semibold text-slate-500">
-                {(event.confidence * 100).toFixed(0)}% Cocok
+                {Math.min(100, Number(event.confidence) > 1 ? Number(event.confidence) : Number(event.confidence) * 100).toFixed(0)}% Cocok
               </span>
             )}
           </div>

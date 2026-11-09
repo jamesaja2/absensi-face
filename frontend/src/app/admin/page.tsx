@@ -241,8 +241,8 @@ export default function AdminLoginPage() {
           </form>
         </div>
 
-        {/* Back Link & Security Badge */}
-        <div className="mt-6 flex items-center justify-between text-xs text-slate-500 px-1">
+        {/* Back Link */}
+        <div className="mt-6 flex items-center justify-center text-xs text-slate-500 px-1">
           <a
             href="/"
             className="flex items-center gap-1.5 hover:text-slate-900 transition-colors font-medium"
@@ -250,11 +250,6 @@ export default function AdminLoginPage() {
             <ArrowLeft size={13} />
             <span>Kembali ke Kiosk Presensi</span>
           </a>
-
-          <div className="flex items-center gap-1 text-[11px] text-slate-400">
-            <ShieldCheck size={13} className="text-emerald-600" />
-            <span>Dual-Token Security</span>
-          </div>
         </div>
       </div>
     </main>
