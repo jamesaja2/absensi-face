@@ -44,6 +44,7 @@ async function initializeDatabase() {
     CREATE TABLE IF NOT EXISTS kiosks (
       id SERIAL PRIMARY KEY,
       kiosk_id VARCHAR(100) UNIQUE NOT NULL,
+      secret_token VARCHAR(255),
       name VARCHAR(255) NOT NULL,
       status VARCHAR(50) DEFAULT 'PENDING', -- 'PENDING', 'APPROVED', 'REJECTED'
       ip_address VARCHAR(50),
@@ -51,6 +52,8 @@ async function initializeDatabase() {
       last_seen TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
+
+    ALTER TABLE kiosks ADD COLUMN IF NOT EXISTS secret_token VARCHAR(255);
 
     CREATE TABLE IF NOT EXISTS users (
       id SERIAL PRIMARY KEY,

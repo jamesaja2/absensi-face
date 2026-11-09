@@ -23,16 +23,19 @@ import KiosksTab from '@/components/KiosksTab';
 import AdminUsersTab from '@/components/AdminUsersTab';
 import {
   BarChart3,
-  Calendar,
   FileSpreadsheet,
   Users,
   Monitor,
-  Shield,
+  ShieldCheck,
   LogOut,
   Upload,
   RefreshCw,
   ExternalLink,
   Filter,
+  Cpu,
+  Radio,
+  ChevronRight,
+  Database,
 } from 'lucide-react';
 
 type Tab = 'analytics' | 'attendance' | 'kiosks' | 'users' | 'admins' | 'import';
@@ -51,7 +54,7 @@ export default function AdminDashboard() {
   const [kiosks, setKiosks] = useState<Kiosk[]>([]);
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
 
-  // Filter states for attendance tab
+  // Filter states
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedKiosk, setSelectedKiosk] = useState('all');
@@ -59,6 +62,7 @@ export default function AdminDashboard() {
   // Modals
   const [showUserForm, setShowUserForm] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Verify auth on mount
   useEffect(() => {
@@ -125,19 +129,24 @@ export default function AdminDashboard() {
     } catch {}
   }, []);
 
-  // Initial load
-  useEffect(() => {
-    Promise.all([
+  const refreshAllData = useCallback(async () => {
+    setIsRefreshing(true);
+    await Promise.all([
       loadAnalytics(),
       loadLogs(),
       loadUsers(),
       loadKiosks(),
       loadAdminUsers(),
-    ]).finally(() => setLoading(false));
+    ]);
+    setIsRefreshing(false);
+  }, [loadAnalytics, loadLogs, loadUsers, loadKiosks, loadAdminUsers]);
 
+  // Initial load
+  useEffect(() => {
+    refreshAllData().finally(() => setLoading(false));
     const interval = setInterval(loadAnalytics, 20000);
     return () => clearInterval(interval);
-  }, [loadAnalytics, loadLogs, loadUsers, loadKiosks, loadAdminUsers]);
+  }, [refreshAllData, loadAnalytics]);
 
   // Reload logs when filters change
   useEffect(() => {
@@ -156,7 +165,7 @@ export default function AdminDashboard() {
       end_date: endDate || undefined,
       kiosk_id: selectedKiosk,
     });
-    toast.success('Mengunduh laporan presensi Excel...');
+    toast.success('File Excel sedang diunduh');
   };
 
   const handleDeleteUser = async (user: User) => {
@@ -179,448 +188,370 @@ export default function AdminDashboard() {
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ width: 36, height: 36, border: '3px solid #E2E8F0', borderTopColor: '#2563EB', borderRadius: '50%', animation: 'spin 0.7s linear infinite', margin: '0 auto 12px' }} />
-          <p style={{ fontSize: 13, color: '#64748B' }}>Memuat sistem dashboard...</p>
+      <div className="min-h-screen bg-[#090D16] flex items-center justify-center text-slate-300 font-mono text-sm">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-blue-500/20 border-t-blue-500 rounded-full animate-spin" />
+          <span>INITIALIZING ENTERPRISE DASHBOARD...</span>
         </div>
       </div>
     );
   }
 
-  const tabs: { id: Tab; label: string; icon: any }[] = [
-    { id: 'analytics', label: 'Analitikal & Statistik', icon: BarChart3 },
-    { id: 'attendance', label: 'Log Absensi & Export', icon: FileSpreadsheet },
-    { id: 'kiosks', label: 'Otorisasi Kiosk', icon: Monitor },
-    { id: 'users', label: 'Data Wajah & Karyawan', icon: Users },
-    { id: 'admins', label: 'Kelola Admin & Roles', icon: Shield },
-    { id: 'import', label: 'Import CSV', icon: Upload },
+  const navItems = [
+    { id: 'analytics' as Tab, label: 'Overview & Metrics', icon: BarChart3, badge: null },
+    { id: 'attendance' as Tab, label: 'Presensi Logs & Export', icon: FileSpreadsheet, badge: logsTotal > 0 ? String(logsTotal) : null },
+    { id: 'kiosks' as Tab, label: 'Kiosks & Hardware', icon: Monitor, badge: kiosks.filter(k => k.status === 'PENDING').length > 0 ? `${kiosks.filter(k => k.status === 'PENDING').length} PENDING` : null },
+    { id: 'users' as Tab, label: 'Data Karyawan & Wajah', icon: Users, badge: users.length > 0 ? String(users.length) : null },
+    { id: 'admins' as Tab, label: 'Admin Accounts & Roles', icon: ShieldCheck, badge: null },
+    { id: 'import' as Tab, label: 'CSV Dataset Importer', icon: Upload, badge: null },
   ];
 
+  const pendingKiosksCount = kiosks.filter(k => k.status === 'PENDING').length;
+
   return (
-    <main style={{ minHeight: '100vh', background: '#F1F5F9', display: 'flex', flexDirection: 'column', fontFamily: 'Inter, system-ui, sans-serif' }}>
+    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex font-sans selection:bg-blue-600 selection:text-white">
       <Toaster position="top-center" />
 
-      {/* ── TOPBAR NAVIGATION ─────────────────────────────────────── */}
-      <header
-        style={{
-          background: '#FFFFFF',
-          borderBottom: '1px solid #E2E8F0',
-          position: 'sticky',
-          top: 0,
-          zIndex: 40,
-        }}
-      >
-        <div
-          style={{
-            maxWidth: 1320,
-            margin: '0 auto',
-            padding: '0 24px',
-            height: 64,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          {/* Logo & Title */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <img src="/logo.png" alt="Logo PUSTEKOM" style={{ height: 40 }} />
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 15, color: '#0F172A', letterSpacing: '-0.02em' }}>
-                Admin Portal Presensi Wajah
+      {/* ── SIDEBAR NAVIGATION (Enterprise SaaS Style) ──────────────── */}
+      <aside className="w-64 bg-[#0F172A] border-r border-slate-800 text-slate-300 flex flex-col justify-between shrink-0 select-none z-30">
+        <div>
+          {/* Workspace / Organization Switcher */}
+          <div className="p-4 border-b border-slate-800/80">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-sm shadow-md shadow-blue-600/30">
+                <Cpu size={18} />
               </div>
-              <div style={{ fontSize: 11, color: '#64748B' }}>
-                Multi-Kiosk Enterprise Management System
+              <div className="min-w-0">
+                <div className="text-sm font-bold text-white tracking-tight truncate">PUSTEKOM OS</div>
+                <div className="text-[11px] font-mono text-slate-400 flex items-center gap-1.5 mt-0.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Production Gateway</span>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* User Profile & Right Actions */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            {currentUser && (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: '4px 10px',
-                  borderRadius: 8,
-                  background: '#F8FAFC',
-                  border: '1px solid #E2E8F0',
-                }}
-              >
-                <div
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: '50%',
-                    background: '#DBEAFE',
-                    color: '#1D4ED8',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontWeight: 700,
-                    fontSize: 12,
-                    overflow: 'hidden',
-                  }}
-                >
-                  {currentUser.avatar_url ? (
-                    <img src={currentUser.avatar_url} alt={currentUser.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    currentUser.name?.charAt(0) || 'A'
-                  )}
-                </div>
-                <div style={{ textAlign: 'left' }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#0F172A' }}>{currentUser.name}</div>
-                  <div style={{ fontSize: 10, fontWeight: 600, color: '#7C3AED', textTransform: 'uppercase' }}>
-                    {currentUser.role?.replace('_', ' ')}
-                  </div>
-                </div>
-              </div>
-            )}
+          {/* Navigation Links */}
+          <nav className="p-3 space-y-1">
+            <div className="text-[10px] font-mono uppercase tracking-wider text-slate-400 px-3 py-2 font-semibold">
+              Platform Modules
+            </div>
 
-            <a
-              href="/"
-              target="_blank"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '7px 12px',
-                borderRadius: 8,
-                background: '#EFF6FF',
-                border: '1px solid #BFDBFE',
-                color: '#2563EB',
-                fontSize: 12,
-                fontWeight: 600,
-                textDecoration: 'none',
-              }}
-            >
-              <ExternalLink size={13} />
-              Buka Terminal Kiosk
-            </a>
-
-            <button
-              id="admin-logout"
-              onClick={handleLogout}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '7px 12px',
-                borderRadius: 8,
-                background: '#FEF2F2',
-                border: '1px solid #FCA5A5',
-                color: '#DC2626',
-                fontSize: 12,
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              <LogOut size={13} />
-              Logout
-            </button>
-          </div>
-        </div>
-
-        {/* Tab Navigation Row */}
-        <div style={{ background: '#FFFFFF', borderTop: '1px solid #F1F5F9' }}>
-          <div style={{ maxWidth: 1320, margin: '0 auto', padding: '0 24px', display: 'flex', gap: 4 }}>
-            {tabs.map((tab) => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.id;
               return (
                 <button
-                  key={tab.id}
-                  id={`tab-${tab.id}`}
-                  onClick={() => setActiveTab(tab.id)}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    padding: '12px 18px',
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    fontSize: 13,
-                    fontWeight: isActive ? 700 : 500,
-                    color: isActive ? '#2563EB' : '#64748B',
-                    borderBottom: isActive ? '3px solid #2563EB' : '3px solid transparent',
-                    transition: 'all 0.15s ease',
-                  }}
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id)}
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                    isActive
+                      ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/30'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                  }`}
                 >
-                  <Icon size={16} />
-                  <span>{tab.label}</span>
-                  {tab.id === 'kiosks' && kiosks.filter(k => k.status === 'PENDING').length > 0 && (
-                    <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: '#F59E0B', color: '#fff' }}>
-                      {kiosks.filter(k => k.status === 'PENDING').length}
+                  <div className="flex items-center gap-3">
+                    <Icon size={16} className={isActive ? 'text-white' : 'text-slate-400'} />
+                    <span>{item.label}</span>
+                  </div>
+
+                  {item.badge && (
+                    <span
+                      className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                        item.id === 'kiosks' && pendingKiosksCount > 0
+                          ? 'bg-amber-500 text-black'
+                          : isActive
+                          ? 'bg-blue-700 text-white'
+                          : 'bg-slate-800 text-slate-400'
+                      }`}
+                    >
+                      {item.badge}
                     </span>
                   )}
                 </button>
               );
             })}
-          </div>
+          </nav>
         </div>
-      </header>
 
-      {/* ── BODY CONTAINER ────────────────────────────────────────── */}
-      <div style={{ maxWidth: 1320, margin: '0 auto', width: '100%', padding: '24px 24px 48px', flex: 1, boxSizing: 'border-box' }}>
-        {/* TAB 1: ANALYTICS */}
-        {activeTab === 'analytics' && (
-          <AnalyticsTab data={analyticsData} onRefresh={loadAnalytics} />
-        )}
-
-        {/* TAB 2: ATTENDANCE LOGS & EXCEL EXPORT */}
-        {activeTab === 'attendance' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-            {/* Filter Bar */}
-            <div
-              className="card"
-              style={{
-                padding: '18px 24px',
-                display: 'flex',
-                flexWrap: 'wrap',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 16,
-              }}
-            >
-              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 14 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: '#334155' }}>
-                  <Filter size={15} color="#64748B" />
-                  <span>Rentang Tanggal:</span>
-                </div>
-
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="input"
-                  style={{ width: 'auto', padding: '8px 12px', fontSize: 13 }}
-                  title="Dari Tanggal"
-                />
-
-                <span style={{ color: '#94A3B8', fontSize: 13 }}>s/d</span>
-
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="input"
-                  style={{ width: 'auto', padding: '8px 12px', fontSize: 13 }}
-                  title="Sampai Tanggal"
-                />
-
-                {/* Kiosk Filter */}
-                <select
-                  value={selectedKiosk}
-                  onChange={(e) => setSelectedKiosk(e.target.value)}
-                  className="input"
-                  style={{ width: 'auto', padding: '8px 12px', fontSize: 13 }}
-                >
-                  <option value="all">Semua Kiosk Terminal</option>
-                  {kiosks.map((k) => (
-                    <option key={k.kiosk_id} value={k.kiosk_id}>
-                      {k.name || k.kiosk_id}
-                    </option>
-                  ))}
-                </select>
-
-                {(startDate || endDate || selectedKiosk !== 'all') && (
-                  <button
-                    onClick={() => {
-                      setStartDate('');
-                      setEndDate('');
-                      setSelectedKiosk('all');
-                    }}
-                    className="btn btn-secondary"
-                    style={{ fontSize: 12, padding: '7px 12px' }}
-                  >
-                    Reset Filter
-                  </button>
+        {/* Bottom User Card */}
+        <div className="p-3 border-t border-slate-800/80 bg-[#090D16]/50">
+          <div className="flex items-center justify-between p-2 rounded-lg bg-slate-900/60 border border-slate-800">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-7 h-7 rounded-full bg-blue-600/20 border border-blue-500/30 text-blue-400 font-bold text-xs flex items-center justify-center shrink-0">
+                {currentUser?.avatar_url ? (
+                  <img src={currentUser.avatar_url} alt="Avatar" className="w-full h-full rounded-full object-cover" />
+                ) : (
+                  currentUser?.name?.charAt(0) || 'A'
                 )}
               </div>
-
-              {/* Excel Export Button */}
-              <button
-                onClick={handleExportExcel}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '9px 18px',
-                  borderRadius: 8,
-                  border: 'none',
-                  background: '#059669', // Emerald Green Excel theme
-                  color: '#FFFFFF',
-                  fontWeight: 700,
-                  fontSize: 13,
-                  cursor: 'pointer',
-                  boxShadow: '0 4px 12px rgba(5, 150, 105, 0.25)',
-                }}
-              >
-                <FileSpreadsheet size={16} />
-                Unduh Rekap Excel (.xlsx)
-              </button>
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-slate-200 truncate">{currentUser?.name || 'Administrator'}</div>
+                <div className="text-[10px] font-mono text-purple-400 uppercase tracking-wider font-bold">
+                  {currentUser?.role?.replace('_', ' ') || 'SUPER ADMIN'}
+                </div>
+              </div>
             </div>
 
-            {/* Attendance Table */}
-            <AttendanceTable logs={logs} />
+            <button
+              onClick={handleLogout}
+              className="p-1.5 text-slate-400 hover:text-rose-400 rounded-md hover:bg-slate-800 transition-colors"
+              title="Logout Session"
+            >
+              <LogOut size={15} />
+            </button>
           </div>
-        )}
+        </div>
+      </aside>
 
-        {/* TAB 3: KIOSKS MANAGEMENT */}
-        {activeTab === 'kiosks' && (
-          <KiosksTab kiosks={kiosks} onRefresh={loadKiosks} />
-        )}
+      {/* ── MAIN CONTENT AREA ───────────────────────────────────────── */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+        {/* Top App Header */}
+        <header className="h-16 bg-white border-b border-slate-200 px-8 flex items-center justify-between sticky top-0 z-20">
+          <div className="flex items-center gap-3">
+            <div className="text-sm font-bold text-slate-900 tracking-tight">
+              {navItems.find(i => i.id === activeTab)?.label}
+            </div>
+            <span className="text-slate-300">•</span>
+            <div className="text-xs text-slate-500 font-mono">
+              ArcFace GPU + MiniFASNet v2 Engine
+            </div>
+          </div>
 
-        {/* TAB 4: USERS / EMPLOYEES */}
-        {activeTab === 'users' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
-                <h2 style={{ fontSize: 16, fontWeight: 700, color: '#0F172A' }}>
-                  Data Karyawan & Wajah Terdaftar ({users.length})
-                </h2>
-                <p style={{ fontSize: 13, color: '#64748B', marginTop: 2 }}>
-                  Setiap foto karyawan dipelajari oleh model ArcFace GPU CompreFace untuk pengenalan real-time.
-                </p>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={refreshAllData}
+              disabled={isRefreshing}
+              className="p-2 text-slate-500 hover:text-slate-800 rounded-lg hover:bg-slate-100 border border-slate-200 transition-all text-xs font-medium flex items-center gap-1.5"
+              title="Refresh Data"
+            >
+              <RefreshCw size={13} className={isRefreshing ? 'animate-spin' : ''} />
+              <span>Sync</span>
+            </button>
+
+            <a
+              href="/"
+              target="_blank"
+              className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-sm transition-all"
+            >
+              <span>Terminal Kiosk</span>
+              <ExternalLink size={12} />
+            </a>
+          </div>
+        </header>
+
+        {/* Tab Canvas */}
+        <div className="p-8 max-w-7xl w-full mx-auto space-y-6">
+          {/* TAB 1: ANALYTICS */}
+          {activeTab === 'analytics' && (
+            <AnalyticsTab data={analyticsData} onRefresh={loadAnalytics} />
+          )}
+
+          {/* TAB 2: ATTENDANCE & EXCEL EXPORT */}
+          {activeTab === 'attendance' && (
+            <div className="space-y-4">
+              {/* Filter & Export Bar */}
+              <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-wrap items-center justify-between gap-4">
+                <div className="flex flex-wrap items-center gap-3 text-xs">
+                  <div className="flex items-center gap-1.5 font-bold text-slate-700 uppercase font-mono text-[11px]">
+                    <Filter size={13} className="text-slate-400" />
+                    <span>Filter Range:</span>
+                  </div>
+
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+                    title="Start Date"
+                  />
+                  <span className="text-slate-400 font-mono">to</span>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+                    title="End Date"
+                  />
+
+                  <select
+                    value={selectedKiosk}
+                    onChange={(e) => setSelectedKiosk(e.target.value)}
+                    className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium"
+                  >
+                    <option value="all">Semua Kiosk Hardware</option>
+                    {kiosks.map((k) => (
+                      <option key={k.kiosk_id} value={k.kiosk_id}>
+                        {k.name || k.kiosk_id}
+                      </option>
+                    ))}
+                  </select>
+
+                  {(startDate || endDate || selectedKiosk !== 'all') && (
+                    <button
+                      onClick={() => {
+                        setStartDate('');
+                        setEndDate('');
+                        setSelectedKiosk('all');
+                      }}
+                      className="px-2.5 py-1 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded text-xs transition-colors"
+                    >
+                      Reset Filter
+                    </button>
+                  )}
+                </div>
+
+                {/* Export Excel Button */}
+                <button
+                  onClick={handleExportExcel}
+                  className="px-4 py-2 bg-emerald-700 hover:bg-emerald-600 active:bg-emerald-800 text-white rounded-lg font-semibold text-xs flex items-center gap-2 shadow-sm shadow-emerald-700/20 transition-all"
+                >
+                  <FileSpreadsheet size={15} />
+                  <span>Unduh Rekap Excel (.xlsx)</span>
+                </button>
               </div>
 
-              <button
-                id="add-user"
-                onClick={() => {
-                  setEditingUser(null);
-                  setShowUserForm(true);
-                }}
-                className="btn btn-primary"
-                style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
-              >
-                + Tambah Karyawan Baru
-              </button>
+              {/* Attendance Table */}
+              <AttendanceTable logs={logs} />
             </div>
+          )}
 
-            <div className="card" style={{ overflow: 'hidden' }}>
-              <table className="table" style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr>
-                    <th>Foto</th>
-                    <th>Nama</th>
-                    <th>Nomor Induk</th>
-                    <th>Email</th>
-                    <th>Total Presensi</th>
-                    <th>Status Wajah</th>
-                    <th style={{ textAlign: 'right' }}>Aksi</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} style={{ textAlign: 'center', padding: '48px 16px', color: '#94A3B8' }}>
-                        Belum ada data karyawan. Tambahkan manual atau import file CSV.
-                      </td>
+          {/* TAB 3: KIOSKS MANAGEMENT */}
+          {activeTab === 'kiosks' && (
+            <KiosksTab kiosks={kiosks} onRefresh={loadKiosks} />
+          )}
+
+          {/* TAB 4: USERS / EMPLOYEES */}
+          {activeTab === 'users' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-base font-bold text-slate-900 tracking-tight">
+                    Data Wajah & Karyawan Terdaftar ({users.length})
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Model biometrik ArcFace mempelajari embedding wajah untuk setiap karyawan yang terdaftar.
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setEditingUser(null);
+                    setShowUserForm(true);
+                  }}
+                  className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-sm transition-all"
+                >
+                  <span>+ Tambah Karyawan Baru</span>
+                </button>
+              </div>
+
+              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-mono uppercase text-slate-500">
+                      <th className="py-3 px-4 w-12">Foto</th>
+                      <th className="py-3 px-4">Nama Lengkap</th>
+                      <th className="py-3 px-4">Nomor Induk</th>
+                      <th className="py-3 px-4">Email</th>
+                      <th className="py-3 px-4">Total Presensi</th>
+                      <th className="py-3 px-4">Status AI Model</th>
+                      <th className="py-3 px-4 text-right">Aksi</th>
                     </tr>
-                  ) : (
-                    users.map((user) => (
-                      <tr key={user.id}>
-                        <td>
-                          <div
-                            style={{
-                              width: 36,
-                              height: 36,
-                              borderRadius: '50%',
-                              background: '#EFF6FF',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              overflow: 'hidden',
-                              fontSize: 13,
-                              fontWeight: 700,
-                              color: '#2563EB',
-                              border: '1px solid #DBEAFE',
-                            }}
-                          >
-                            {user.photo_url ? (
-                              <img
-                                src={user.photo_url}
-                                alt={user.name}
-                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                              />
-                            ) : (
-                              user.name.charAt(0)
-                            )}
-                          </div>
-                        </td>
-                        <td style={{ fontWeight: 600, color: '#0F172A' }}>{user.name}</td>
-                        <td style={{ fontFamily: 'monospace', color: '#475569' }}>{user.nomor_induk}</td>
-                        <td style={{ color: '#64748B', fontSize: 13 }}>{user.email || '—'}</td>
-                        <td style={{ fontWeight: 700, color: '#2563EB' }}>{user.total_attendance ?? 0}x</td>
-                        <td>
-                          {user.compreface_subject_id ? (
-                            <span className="badge badge-success">Terdaftar (AI Model)</span>
-                          ) : (
-                            <span className="badge badge-danger">Belum Terdaftar</span>
-                          )}
-                        </td>
-                        <td>
-                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
-                            <button
-                              onClick={() => {
-                                setEditingUser(user);
-                                setShowUserForm(true);
-                              }}
-                              className="btn btn-ghost"
-                              style={{ padding: '6px 10px', fontSize: 12 }}
-                              title="Edit Data"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => handleDeleteUser(user)}
-                              className="btn btn-danger"
-                              style={{ padding: '6px 10px', fontSize: 12 }}
-                              title="Hapus Karyawan"
-                            >
-                              Hapus
-                            </button>
-                          </div>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs">
+                    {users.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="py-12 text-center text-slate-400">
+                          Belum ada karyawan terdaftar. Tambah manual atau import file CSV.
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    ) : (
+                      users.map((user) => (
+                        <tr key={user.id} className="hover:bg-slate-50/60 transition-colors">
+                          <td className="py-2.5 px-4">
+                            <div className="w-8 h-8 rounded-full bg-blue-50 border border-blue-200 text-blue-600 font-bold text-xs flex items-center justify-center overflow-hidden shrink-0">
+                              {user.photo_url ? (
+                                <img
+                                  src={user.photo_url}
+                                  alt={user.name}
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                />
+                              ) : (
+                                user.name.charAt(0)
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-4 font-semibold text-slate-900">{user.name}</td>
+                          <td className="py-2.5 px-4 font-mono text-slate-600">{user.nomor_induk}</td>
+                          <td className="py-2.5 px-4 text-slate-500">{user.email || '—'}</td>
+                          <td className="py-2.5 px-4 font-bold text-blue-600 font-mono">{user.total_attendance ?? 0}x</td>
+                          <td className="py-2.5 px-4">
+                            {user.compreface_subject_id ? (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                                ● Trained (Active)
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">
+                                Belum Terdaftar
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => {
+                                  setEditingUser(user);
+                                  setShowUserForm(true);
+                                }}
+                                className="px-2 py-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded font-medium"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => handleDeleteUser(user)}
+                                className="px-2 py-1 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded font-medium"
+                              >
+                                Hapus
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* TAB 5: ADMINS & ROLES */}
-        {activeTab === 'admins' && (
-          <AdminUsersTab
-            admins={adminUsers}
-            currentAdminEmail={currentUser?.email}
-            onRefresh={loadAdminUsers}
-          />
-        )}
+          {/* TAB 5: ADMIN USERS */}
+          {activeTab === 'admins' && (
+            <AdminUsersTab
+              admins={adminUsers}
+              currentAdminEmail={currentUser?.email}
+              onRefresh={loadAdminUsers}
+            />
+          )}
 
-        {/* TAB 6: IMPORT CSV */}
-        {activeTab === 'import' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div>
-              <h2 style={{ fontSize: 16, fontWeight: 700, color: '#0F172A' }}>
-                Import Dataset Karyawan dari File CSV
-              </h2>
-              <p style={{ fontSize: 13, color: '#64748B', marginTop: 4 }}>
-                Upload file CSV dengan kolom header: <code>name, nomor_induk, email, photo_url</code>. Sistem akan mendaftarkan subject wajah ke database dan CompreFace secara otomatis.
-              </p>
+          {/* TAB 6: CSV IMPORTER */}
+          {activeTab === 'import' && (
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-base font-bold text-slate-900 tracking-tight">
+                  Import Dataset Karyawan dari File CSV
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Format header CSV yang didukung: <code className="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-800">name, nomor_induk, email, photo_url</code>.
+                </p>
+              </div>
+              <CSVImporter onComplete={() => { loadUsers(); loadAnalytics(); }} />
             </div>
-            <CSVImporter onComplete={() => { loadUsers(); loadAnalytics(); }} />
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
-      {/* User Form Modal */}
+      {/* User Form Drawer Modal */}
       {showUserForm && (
         <UserForm
           user={editingUser}
@@ -631,6 +562,6 @@ export default function AdminDashboard() {
           }}
         />
       )}
-    </main>
+    </div>
   );
 }

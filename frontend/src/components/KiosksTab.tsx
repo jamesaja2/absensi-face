@@ -304,3 +304,4 @@ export default function KiosksTab({ kiosks, onRefresh }: KiosksTabProps) {
     </div>
   );
 }
+

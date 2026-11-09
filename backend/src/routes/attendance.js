@@ -2,17 +2,38 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const ExcelJS = require('exceljs');
+const rateLimit = require('express-rate-limit');
 const { query } = require('../db');
 const { recognizeFaceFromBuffer } = require('../services/compreface');
 const { checkLiveness } = require('../services/antispoof');
 const { recordAttendance, inquireAttendance, CONFIDENCE_THRESHOLD } = require('../services/attendanceService');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 
-// Memory storage for fast processing
+// Rate limiter for face recognition endpoint: max 60 requests per minute per IP
+const recognizeLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 90,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Batas frekuensi kamera terlampaui. Harap tunggu beberapa detik.' },
+});
+
+// Memory storage for fast processing with strict file limit
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  limits: { fileSize: 8 * 1024 * 1024 }, // 8MB
 });
+
+function isValidImageBuffer(buf) {
+  if (!buf || buf.length < 4) return false;
+  // JPEG: FF D8 FF
+  if (buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF) return true;
+  // PNG: 89 50 4E 47
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47) return true;
+  // WebP: RIFF
+  if (buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46) return true;
+  return false;
+}
 
 // ─── GET /api/attendance ──────────────────────────────────────────────────────
 // Query params: start_date, end_date, date, user_id, kiosk_id, search, limit, page
@@ -415,30 +436,39 @@ router.get('/export-excel', async (req, res) => {
 });
 
 // ─── POST /api/attendance/recognize ───────────────────────────────────────────
-// Accepts frame from kiosk camera, verifies kiosk authorization status, runs Anti-Spoofing & Face Match
-router.post('/recognize', upload.single('file'), async (req, res) => {
+// Accepts frame from kiosk camera, verifies kiosk authorization token, runs Anti-Spoofing & Face Match
+router.post('/recognize', recognizeLimiter, upload.single('file'), async (req, res) => {
   try {
-    if (!req.file) {
+    if (!req.file || !req.file.buffer) {
       return res.status(400).json({ error: 'No image file provided' });
     }
 
-    const io = req.app.get('io');
     const imageBuffer = req.file.buffer;
 
-    // Retrieve or register Kiosk ID
+    // Validate image format / magic bytes
+    if (!isValidImageBuffer(imageBuffer)) {
+      return res.status(400).json({ error: 'Format berkas tidak valid. Hanya berkas gambar JPEG/PNG/WebP yang diizinkan.' });
+    }
+
+    const io = req.app.get('io');
+
+    // Retrieve Kiosk ID and Cryptographic Secret Token
     const kioskId = (req.headers['x-kiosk-id'] || req.body.kiosk_id || 'default_kiosk').trim();
+    const clientToken = (req.headers['x-kiosk-token'] || req.body.kiosk_token || '').trim();
 
     // Check kiosk in DB
     let kioskRes = await query('SELECT * FROM kiosks WHERE kiosk_id = $1', [kioskId]);
     if (kioskRes.rows.length === 0) {
-      // Auto register kiosk as PENDING
+      // Auto register kiosk as PENDING with new secret token
+      const crypto = require('crypto');
+      const generatedToken = crypto.randomBytes(32).toString('hex');
       kioskRes = await query(
-        `INSERT INTO kiosks (kiosk_id, name, status, ip_address, user_agent)
-         VALUES ($1, $2, 'PENDING', $3, $4)
+        `INSERT INTO kiosks (kiosk_id, secret_token, name, status, ip_address, user_agent)
+         VALUES ($1, $2, $3, 'PENDING', $4, $5)
          RETURNING *`,
-        [kioskId, `Kiosk ${kioskId.slice(-6).toUpperCase()}`, req.ip, req.headers['user-agent'] || '']
+        [kioskId, generatedToken, `Kiosk ${kioskId.slice(-6).toUpperCase()}`, req.ip, req.headers['user-agent'] || '']
       );
-      console.log(`[Kiosk] New kiosk discovered and registered as PENDING: ${kioskId}`);
+      console.log(`[Kiosk] New kiosk registered as PENDING: ${kioskId}`);
     } else {
       // Update last seen & IP
       await query(
@@ -448,7 +478,14 @@ router.post('/recognize', upload.single('file'), async (req, res) => {
     }
 
     const currentKiosk = kioskRes.rows[0];
-    const isApprovedKiosk = currentKiosk.status === 'APPROVED';
+
+    // Cryptographic Token Verification
+    const isTokenMatching = currentKiosk.secret_token ? (clientToken === currentKiosk.secret_token) : true;
+    const isApprovedKiosk = currentKiosk.status === 'APPROVED' && isTokenMatching;
+
+    if (currentKiosk.status === 'APPROVED' && !isTokenMatching) {
+      console.warn(`[SECURITY ALERT] Kiosk ${kioskId} status is APPROVED but sent an invalid or missing security token! Fallback to INQUIRY mode.`);
+    }
 
     // 1. Face Detection & Recognition via CompreFace
     const result = await recognizeFaceFromBuffer(imageBuffer, 'frame.jpg');

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { attendanceApi } from '@/lib/api';
+import { ShieldCheck, ShieldAlert, Cpu, Camera, AlertTriangle } from 'lucide-react';
 
 interface CameraFeedProps {
   className?: string;
@@ -31,6 +32,7 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
   const [detectedFaces, setDetectedFaces] = useState<DetectedFaceBox[]>([]);
   const clearTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // High-Tech Industrial HUD Corner Bracket Drawer
   const drawFaceOverlays = useCallback((faces: DetectedFaceBox[]) => {
     const canvas = overlayCanvasRef.current;
     const video = videoRef.current;
@@ -51,7 +53,6 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
     faces.forEach((face) => {
       if (!face.box) return;
 
-      // Coordinate mapping with mirror horizontal flip
       const rawX1 = face.box.x_min;
       const rawX2 = face.box.x_max;
       const rawY1 = face.box.y_min;
@@ -60,54 +61,125 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
       const boxW = (rawX2 - rawX1) * scaleX;
       const boxH = (rawY2 - rawY1) * scaleY;
 
-      // Because video has scaleX(-1), mirrored x position is:
+      // Video has scaleX(-1) mirror effect
       const mirroredX = canvas.width - (rawX2 * scaleX);
       const mirroredY = rawY1 * scaleY;
 
-      let color = '#3b82f6'; // default blue
-      let text = 'Mengecek...';
+      // Color scheme based on biometric decision
+      let themeColor = '#38bdf8'; // Sky blue default
+      let bgPillColor = 'rgba(15, 23, 42, 0.85)';
+      let label = 'VERIFYING';
+      let sublabel = '';
 
       if (face.status === 'spoof' || !face.is_real) {
-        color = '#ef4444'; // Red
-        text = '⚠️ SPOOFING TERDETEKSI';
+        themeColor = '#f43f5e'; // Rose / Crimson
+        label = 'THREAT REJECTED';
+        sublabel = 'ANTI-SPOOF TRIGGERED';
       } else if (face.status === 'recognized') {
-        color = '#10b981'; // Green
-        text = `✓ ${face.name || (face.user && face.user.name) || 'Terabsen'} (${(face.confidence || 0).toFixed(0)}%)`;
+        themeColor = '#10b981'; // Emerald
+        label = (face.name || face.user?.name || 'VERIFIED').toUpperCase();
+        sublabel = `MATCH ${(face.confidence || 0).toFixed(1)}% • RECORDED`;
       } else if (face.status === 'debounced') {
-        color = '#0284c7'; // Cyan
-        text = `ℹ️ ${face.name || (face.user && face.user.name) || 'Sudah Absen'}`;
+        themeColor = '#06b6d4'; // Cyan
+        label = (face.name || face.user?.name || 'ATTENDED').toUpperCase();
+        sublabel = 'COOLDOWN ACTIVE';
       } else if (face.status === 'already_attended') {
-        color = '#3b82f6'; // Blue
-        text = `ℹ️ Sudah Absen: ${face.name || (face.user && face.user.name) || ''} (${face.formatted_time || ''})`;
+        themeColor = '#38bdf8'; // Blue
+        label = (face.name || face.user?.name || 'ATTENDED').toUpperCase();
+        sublabel = `RECORDED AT ${face.formatted_time || 'TODAY'}`;
       } else if (face.status === 'not_attended') {
-        color = '#f59e0b'; // Amber
-        text = `ℹ️ Cek: Belum Absen (${face.name || (face.user && face.user.name) || ''})`;
+        themeColor = '#f59e0b'; // Amber
+        label = (face.name || face.user?.name || 'IDENTIFIED').toUpperCase();
+        sublabel = 'NOT LOGGED TODAY';
       } else if (face.status === 'low_confidence' || face.status === 'unknown') {
-        color = '#f59e0b'; // Amber
-        text = 'Wajah Belum Terdaftar';
+        themeColor = '#94a3b8'; // Slate
+        label = 'UNREGISTERED';
+        sublabel = 'NO BIOMETRIC MATCH';
       }
 
-      // Draw bounding box
-      ctx.strokeStyle = color;
+      ctx.save();
+
+      // 1. Draw Corner HUD Brackets (Precision Enterprise Look)
+      const cornerLen = Math.min(24, boxW * 0.25, boxH * 0.25);
+      ctx.strokeStyle = themeColor;
       ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      // Top-Left
+      ctx.beginPath();
+      ctx.moveTo(mirroredX, mirroredY + cornerLen);
+      ctx.lineTo(mirroredX, mirroredY);
+      ctx.lineTo(mirroredX + cornerLen, mirroredY);
+      ctx.stroke();
+
+      // Top-Right
+      ctx.beginPath();
+      ctx.moveTo(mirroredX + boxW - cornerLen, mirroredY);
+      ctx.lineTo(mirroredX + boxW, mirroredY);
+      ctx.lineTo(mirroredX + boxW, mirroredY + cornerLen);
+      ctx.stroke();
+
+      // Bottom-Left
+      ctx.beginPath();
+      ctx.moveTo(mirroredX, mirroredY + boxH - cornerLen);
+      ctx.lineTo(mirroredX, mirroredY + boxH);
+      ctx.lineTo(mirroredX + cornerLen, mirroredY + boxH);
+      ctx.stroke();
+
+      // Bottom-Right
+      ctx.beginPath();
+      ctx.moveTo(mirroredX + boxW - cornerLen, mirroredY + boxH);
+      ctx.lineTo(mirroredX + boxW, mirroredY + boxH);
+      ctx.lineTo(mirroredX + boxW, mirroredY + boxH - cornerLen);
+      ctx.stroke();
+
+      // Subtle target bounding box outline (light translucent)
+      ctx.strokeStyle = themeColor + '33'; // 20% opacity
+      ctx.lineWidth = 1;
       ctx.strokeRect(mirroredX, mirroredY, boxW, boxH);
 
-      // Draw background pill for label
-      ctx.font = 'bold 12px sans-serif';
-      const textMetrics = ctx.measureText(text);
-      const textWidth = textMetrics.width;
-      const labelH = 22;
-      const labelW = textWidth + 16;
-      const labelY = Math.max(0, mirroredY - labelH - 4);
+      // 2. High-Tech Monospace Identification Badge
+      const pillHeight = sublabel ? 38 : 24;
+      const pillY = Math.max(8, mirroredY - pillHeight - 8);
 
-      ctx.fillStyle = color;
+      // Measure font
+      ctx.font = 'bold 11px "JetBrains Mono", ui-monospace, Menlo, monospace';
+      const labelMetrics = ctx.measureText(label);
+      ctx.font = '9px "JetBrains Mono", ui-monospace, Menlo, monospace';
+      const subMetrics = sublabel ? ctx.measureText(sublabel) : { width: 0 };
+      const contentWidth = Math.max(labelMetrics.width, subMetrics.width);
+      const pillWidth = Math.max(110, contentWidth + 24);
+
+      // Frosted dark pill background
+      ctx.fillStyle = bgPillColor;
       ctx.beginPath();
-      ctx.roundRect(mirroredX, labelY, labelW, labelH, 4);
+      ctx.roundRect(mirroredX, pillY, pillWidth, pillHeight, 6);
       ctx.fill();
 
-      // Label text
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText(text, mirroredX + 8, labelY + 15);
+      // Subtle border for the pill
+      ctx.strokeStyle = themeColor + '88';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Left vertical accent strip
+      ctx.fillStyle = themeColor;
+      ctx.beginPath();
+      ctx.roundRect(mirroredX, pillY, 3, pillHeight, [6, 0, 0, 6]);
+      ctx.fill();
+
+      // Text rendering
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = 'bold 11px "JetBrains Mono", ui-monospace, Menlo, monospace';
+      ctx.fillText(label, mirroredX + 10, pillY + (sublabel ? 16 : 16));
+
+      if (sublabel) {
+        ctx.fillStyle = themeColor;
+        ctx.font = '800 9px "JetBrains Mono", ui-monospace, Menlo, monospace';
+        ctx.fillText(sublabel, mirroredX + 10, pillY + 30);
+      }
+
+      ctx.restore();
     });
   }, []);
 
@@ -140,7 +212,6 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
             onFacesDetected(data.faces);
           }
 
-          // Reset clear timer
           if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
           clearTimerRef.current = setTimeout(() => {
             setDetectedFaces([]);
@@ -149,10 +220,10 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
               const ctx = overlay.getContext('2d');
               if (ctx) ctx.clearRect(0, 0, overlay.width, overlay.height);
             }
-          }, 2500);
+          }, 2400);
         }
       } catch (err) {
-        // Silently ignore network hiccup during recognition
+        // Silently tolerate single network frame drops
       } finally {
         setIsProcessing(false);
       }
@@ -162,7 +233,7 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
     if (status === 'active') {
-      interval = setInterval(captureFrame, 1800);
+      interval = setInterval(captureFrame, 1600);
     }
     return () => {
       if (interval) clearInterval(interval);
@@ -186,13 +257,13 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
       } catch (err: any) {
         if (err.name === 'NotAllowedError') {
           setStatus('denied');
-          setErrorMessage('Akses kamera ditolak. Harap izinkan akses kamera di browser Anda.');
+          setErrorMessage('Izin kamera ditolak oleh browser. Harap aktifkan izin kamera pada address bar.');
         } else if (err.name === 'NotFoundError') {
           setStatus('error');
-          setErrorMessage('Tidak ada kamera yang terdeteksi.');
+          setErrorMessage('Tidak ada sensor kamera yang terhubung pada perangkat ini.');
         } else {
           setStatus('error');
-          setErrorMessage(`Error: ${err.message}`);
+          setErrorMessage(`Inisialisasi perangkat gagal: ${err.message}`);
         }
       }
     }
@@ -206,82 +277,92 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
   return (
     <div
       ref={containerRef}
-      className={`relative overflow-hidden ${className}`}
-      style={{ borderRadius: 12, background: '#0f172a', border: '1px solid var(--color-border)' }}
+      className={`relative overflow-hidden bg-[#070B14] border border-slate-800 rounded-xl select-none shadow-2xl ${className}`}
     >
-      {/* Video feed */}
+      {/* Video Feed (mirrored for natural interaction) */}
       <video
         ref={videoRef}
         autoPlay
         playsInline
         muted
-        style={{
-          width: '100%',
-          height: '100%',
-          objectFit: 'cover',
-          transform: 'scaleX(-1)',
-          opacity: status === 'active' ? 1 : 0,
-          transition: 'opacity 0.4s',
-        }}
+        className={`w-full h-full object-cover transition-opacity duration-500 ${
+          status === 'active' ? 'opacity-100' : 'opacity-0'
+        }`}
+        style={{ transform: 'scaleX(-1)' }}
       />
 
-      {/* Real-time bounding box overlay */}
+      {/* Target Canvas Layer */}
       <canvas
         ref={overlayCanvasRef}
-        style={{
-          position: 'absolute',
-          inset: 0,
-          pointerEvents: 'none',
-          width: '100%',
-          height: '100%',
-        }}
+        className="absolute inset-0 pointer-events-none w-full h-full"
       />
 
-      {/* Hidden offscreen canvas for snapshot captures */}
-      <canvas ref={captureCanvasRef} style={{ display: 'none' }} />
+      {/* Capture Canvas (Offscreen) */}
+      <canvas ref={captureCanvasRef} className="hidden" />
 
-      {/* Loading state */}
-      {status === 'loading' && (
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#0f172a' }}>
-          <div style={{ width: 36, height: 36, border: '3px solid rgba(255,255,255,0.2)', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'spin 0.7s linear infinite', marginBottom: 12 }} />
-          <p style={{ fontSize: 13, color: '#94a3b8' }}>Menghubungkan ke kamera...</p>
-        </div>
-      )}
-
-      {/* Error state */}
-      {(status === 'denied' || status === 'error') && (
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#0f172a', padding: 24, textAlign: 'center' }}>
-          <svg width="36" height="36" fill="none" viewBox="0 0 24 24" stroke="#ef4444" strokeWidth={1.5} style={{ marginBottom: 12 }}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-          </svg>
-          <p style={{ fontSize: 14, fontWeight: 600, color: '#ef4444', marginBottom: 4 }}>Kamera Tidak Tersedia</p>
-          <p style={{ fontSize: 12, color: '#94a3b8' }}>{errorMessage}</p>
-        </div>
-      )}
-
-      {/* Active badges */}
+      {/* HUD Telemetry: Top Status Overlay */}
       {status === 'active' && (
-        <>
-          {/* Live badge */}
-          <div style={{ position: 'absolute', top: 12, left: 12, display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 99, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', animation: 'pulse 1.5s infinite' }} />
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#fff', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Live</span>
-          </div>
-
-          {/* Anti-spoof active badge */}
-          <div style={{ position: 'absolute', top: 12, right: 12, display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 99, background: 'rgba(16, 185, 129, 0.2)', border: '1px solid rgba(16, 185, 129, 0.4)', backdropFilter: 'blur(4px)' }}>
-            <span style={{ fontSize: 11 }}>🛡️</span>
-            <span style={{ fontSize: 11, fontWeight: 600, color: '#34d399' }}>Anti-Spoofing Aktif</span>
-          </div>
-
-          {/* Processing pulse */}
-          {isProcessing && (
-            <div style={{ position: 'absolute', bottom: 12, right: 12, padding: '3px 8px', borderRadius: 6, background: 'rgba(0,0,0,0.5)', color: '#93c5fd', fontSize: 10, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#60a5fa', animation: 'spin 1s linear infinite' }} />
-              Memproses...
+        <div className="absolute top-3 inset-x-3 flex items-center justify-between pointer-events-none z-10">
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-900/80 border border-slate-800 backdrop-blur-md">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-[10px] font-mono font-bold text-slate-200 tracking-wider">OPTICAL LIVE</span>
             </div>
-          )}
-        </>
+
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-900/80 border border-slate-800 backdrop-blur-md">
+              <ShieldCheck size={12} className="text-emerald-400" />
+              <span className="text-[10px] font-mono font-semibold text-slate-300">MINIFASNET LIVENESS ACTIVE</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {isProcessing ? (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-blue-950/80 border border-blue-800/80 backdrop-blur-md text-blue-300">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping" />
+                <span className="text-[10px] font-mono font-bold">ANALYZING FRAME</span>
+              </div>
+            ) : (
+              <div className="px-2 py-0.5 rounded bg-slate-900/60 border border-slate-800/60 text-slate-400 text-[10px] font-mono">
+                STANDBY
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* HUD Telemetry: Bottom Bar */}
+      {status === 'active' && (
+        <div className="absolute bottom-3 inset-x-3 flex items-center justify-between pointer-events-none z-10 text-[10px] font-mono text-slate-400">
+          <div className="flex items-center gap-2 px-2.5 py-1 rounded bg-slate-950/80 border border-slate-800/80 backdrop-blur-md">
+            <Cpu size={11} className="text-slate-500" />
+            <span>ARCFACE-RESNET100 • ONNX RUNTIME</span>
+          </div>
+
+          <div className="px-2.5 py-1 rounded bg-slate-950/80 border border-slate-800/80 backdrop-blur-md text-slate-400">
+            AUTO-CAPTURE: 1.6s
+          </div>
+        </div>
+      )}
+
+      {/* Loading State */}
+      {status === 'loading' && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#070B14] text-slate-400 space-y-3">
+          <div className="w-8 h-8 border-2 border-blue-500/20 border-t-blue-500 rounded-full animate-spin" />
+          <div className="text-xs font-mono tracking-wider text-slate-300">INITIALIZING OPTICAL SENSOR...</div>
+        </div>
+      )}
+
+      {/* Error & Permission Denied State */}
+      {(status === 'denied' || status === 'error') && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0B0F19] text-center p-8 space-y-4">
+          <div className="w-12 h-12 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
+            <AlertTriangle size={24} />
+          </div>
+          <div>
+            <div className="text-sm font-bold text-white mb-1">SENSOR CAPTURE ERROR</div>
+            <div className="text-xs text-slate-400 max-w-sm">{errorMessage}</div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -211,3 +211,4 @@ export default function AnalyticsTab({ data, onRefresh }: AnalyticsTabProps) {
     </div>
   );
 }
+

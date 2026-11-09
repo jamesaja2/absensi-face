@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
+const rateLimit = require('express-rate-limit');
 const { OAuth2Client } = require('google-auth-library');
 const axios = require('axios');
 const { query } = require('../db');
@@ -13,47 +15,77 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const INITIAL_SUPER_ADMIN_EMAIL = (process.env.INITIAL_SUPER_ADMIN_EMAIL || '').toLowerCase();
 
+// Rate limiter for authentication endpoints: max 20 attempts per 15 minutes per IP
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Terlalu banyak percobaan autentikasi dari alamat IP ini. Harap coba lagi dalam 15 menit.' },
+});
+
+router.use('/login', authLimiter);
+router.use('/google', authLimiter);
+
 const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
+
+// Constant-time string comparison to prevent timing attacks
+function timingSafeCheck(input, expected) {
+  if (typeof input !== 'string' || typeof expected !== 'string') return false;
+  const bufInput = Buffer.from(input);
+  const bufExpected = Buffer.from(expected);
+  if (bufInput.length !== bufExpected.length) {
+    // Run dummy check with itself to maintain constant time
+    crypto.timingSafeEqual(bufInput, bufInput);
+    return false;
+  }
+  return crypto.timingSafeEqual(bufInput, bufExpected);
+}
 
 // POST /api/auth/google
 router.post('/google', async (req, res) => {
   const { credential } = req.body;
 
-  if (!credential) {
-    return res.status(400).json({ error: 'Google credential token is required' });
+  if (!credential || typeof credential !== 'string') {
+    return res.status(400).json({ error: 'Token kredensial Google OAuth wajib disertakan' });
   }
 
   try {
-    let email, name, picture;
+    let email, name, picture, emailVerified;
 
-    // Verify token either via google-auth-library or google tokeninfo endpoint
+    // Verify token with Google OAuth
     if (googleClient && GOOGLE_CLIENT_ID) {
-      try {
-        const ticket = await googleClient.verifyIdToken({
-          idToken: credential,
-          audience: GOOGLE_CLIENT_ID,
-        });
-        const payload = ticket.getPayload();
-        email = payload.email.toLowerCase();
-        name = payload.name || payload.email;
-        picture = payload.picture;
-      } catch (verifyErr) {
-        // Fallback to tokeninfo endpoint
-        const infoRes = await axios.get(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
-        email = infoRes.data.email.toLowerCase();
-        name = infoRes.data.name || infoRes.data.email;
-        picture = infoRes.data.picture;
-      }
+      const ticket = await googleClient.verifyIdToken({
+        idToken: credential,
+        audience: GOOGLE_CLIENT_ID,
+      });
+      const payload = ticket.getPayload();
+      email = payload.email?.toLowerCase();
+      name = payload.name || payload.email;
+      picture = payload.picture;
+      emailVerified = payload.email_verified;
     } else {
-      // If GOOGLE_CLIENT_ID is not configured in backend yet, verify directly against Google OAuth tokeninfo
+      // Direct tokeninfo verification
       const infoRes = await axios.get(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
-      email = infoRes.data.email.toLowerCase();
-      name = infoRes.data.name || infoRes.data.email;
-      picture = infoRes.data.picture;
+      const payload = infoRes.data;
+
+      // Strict security: If GOOGLE_CLIENT_ID is configured, audience MUST match!
+      if (GOOGLE_CLIENT_ID && payload.aud !== GOOGLE_CLIENT_ID) {
+        return res.status(401).json({ error: 'Keamanan ditolak: Audience OAuth Token tidak cocok dengan Client ID server.' });
+      }
+
+      email = payload.email?.toLowerCase();
+      name = payload.name || payload.email;
+      picture = payload.picture;
+      emailVerified = payload.email_verified === 'true' || payload.email_verified === true;
     }
 
     if (!email) {
-      return res.status(400).json({ error: 'Failed to retrieve email from Google Account' });
+      return res.status(400).json({ error: 'Gagal mengambil alamat email dari akun Google' });
+    }
+
+    if (!emailVerified) {
+      return res.status(403).json({ error: 'Email Google belum diverifikasi oleh Google' });
     }
 
     // Check admin_users table
@@ -84,7 +116,7 @@ router.post('/google', async (req, res) => {
     const admin = userRow.rows[0];
 
     if (admin.status !== 'ACTIVE') {
-      return res.status(403).json({ error: 'Akun administrator Anda dinonaktifkan.' });
+      return res.status(403).json({ error: 'Akun administrator Anda sedang dinonaktifkan. Hubungi Super Admin.' });
     }
 
     // Update avatar and name if changed
@@ -122,8 +154,12 @@ router.post('/login', async (req, res) => {
     return res.status(400).json({ error: 'Username dan password wajib diisi' });
   }
 
-  if (username !== ADMIN_USERNAME || password !== ADMIN_PASSWORD) {
-    return res.status(401).json({ error: 'Kredensial tidak valid' });
+  // Constant-time check
+  const isUserValid = timingSafeCheck(username, ADMIN_USERNAME);
+  const isPassValid = timingSafeCheck(password, ADMIN_PASSWORD);
+
+  if (!isUserValid || !isPassValid) {
+    return res.status(401).json({ error: 'Kredensial username atau password tidak valid' });
   }
 
   // Ensure default admin user exists in DB
@@ -159,7 +195,7 @@ router.get('/me', authenticateToken, async (req, res) => {
   try {
     const adminRes = await query('SELECT id, email, name, role, avatar_url, status FROM admin_users WHERE id = $1', [req.user.id]);
     if (adminRes.rows.length === 0) {
-      return res.status(404).json({ error: 'User tidak ditemukan' });
+      return res.status(404).json({ error: 'Pengguna admin tidak ditemukan' });
     }
     res.json({ user: adminRes.rows[0] });
   } catch (err) {
@@ -171,7 +207,7 @@ router.get('/me', authenticateToken, async (req, res) => {
 router.post('/verify', (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ valid: false, error: 'No token provided' });
+    return res.status(401).json({ valid: false, error: 'Token tidak disertakan' });
   }
 
   const token = authHeader.split(' ')[1];

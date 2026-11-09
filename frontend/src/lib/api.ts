@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { getKioskId } from './kiosk';
+import { getKioskId, getKioskToken } from './kiosk';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || '';
 
@@ -8,7 +8,7 @@ export const api = axios.create({
   timeout: 30000,
 });
 
-// Attach JWT token & Kiosk ID to every request
+// Attach JWT token & Kiosk Credentials to every request
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
     const token = localStorage.getItem('admin_token');
@@ -16,6 +16,10 @@ api.interceptors.request.use((config) => {
       config.headers.Authorization = `Bearer ${token}`;
     }
     config.headers['x-kiosk-id'] = getKioskId();
+    const kioskToken = getKioskToken();
+    if (kioskToken) {
+      config.headers['x-kiosk-token'] = kioskToken;
+    }
   }
   return config;
 });
@@ -98,12 +102,15 @@ export const attendanceApi = {
     const form = new FormData();
     form.append('file', blob, 'frame.jpg');
     const kioskId = customKioskId || getKioskId();
-    return api.post('/attendance/recognize', form, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-        'x-kiosk-id': kioskId,
-      },
-    });
+    const headers: Record<string, string> = {
+      'Content-Type': 'multipart/form-data',
+      'x-kiosk-id': kioskId,
+    };
+    const kioskToken = getKioskToken();
+    if (kioskToken) {
+      headers['x-kiosk-token'] = kioskToken;
+    }
+    return api.post('/attendance/recognize', form, { headers });
   },
 };
 

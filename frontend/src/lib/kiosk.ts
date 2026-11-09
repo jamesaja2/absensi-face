@@ -2,6 +2,7 @@
 
 const KIOSK_ID_KEY = 'absensi_kiosk_id';
 const KIOSK_NAME_KEY = 'absensi_kiosk_name';
+const KIOSK_TOKEN_KEY = 'absensi_kiosk_token';
 
 export function getKioskId(): string {
   if (typeof window === 'undefined') return 'kiosk_server';
@@ -22,11 +23,21 @@ export function setKioskId(id: string): void {
 }
 
 export function getKioskName(): string {
-  if (typeof window === 'undefined') return 'Kiosk Utama';
+  if (typeof window === 'undefined') return 'Kiosk Terminal';
   return localStorage.getItem(KIOSK_NAME_KEY) || `Kiosk ${getKioskId().replace('kiosk_', '').toUpperCase()}`;
 }
 
 export function setKioskName(name: string): void {
   if (typeof window === 'undefined') return;
   localStorage.setItem(KIOSK_NAME_KEY, name.trim());
+}
+
+export function getKioskToken(): string {
+  if (typeof window === 'undefined') return '';
+  return localStorage.getItem(KIOSK_TOKEN_KEY) || '';
+}
+
+export function setKioskToken(token: string): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(KIOSK_TOKEN_KEY, token.trim());
 }
