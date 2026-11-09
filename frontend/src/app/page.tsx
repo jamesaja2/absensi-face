@@ -2,9 +2,10 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { getSocket } from '@/lib/socket';
-import { attendanceApi, AttendanceLog, TodayStats } from '@/lib/api';
+import { attendanceApi, AttendanceLog } from '@/lib/api';
 import CameraFeed from '@/components/CameraFeed';
 import AttendanceModal from '@/components/AttendanceModal';
+import toast, { Toaster } from 'react-hot-toast';
 
 export default function KioskPage() {
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -48,6 +49,23 @@ export default function KioskPage() {
 
   const handleModalDismiss = useCallback(() => setActiveModal(null), []);
 
+  const handleFacesDetected = useCallback((faces: any[]) => {
+    const spoofFace = faces.find((f) => f.status === 'spoof' || !f.is_real);
+    if (spoofFace) {
+      toast.error('⚠️ Wajah Palsu / Layar HP Terdeteksi (Anti-Spoofing)!', {
+        id: 'anti-spoof-toast',
+        duration: 3000,
+        style: {
+          background: '#b91c1c',
+          color: '#ffffff',
+          fontWeight: 600,
+          borderRadius: 8,
+          fontSize: 13,
+        },
+      });
+    }
+  }, []);
+
   const formatDate = (date: Date) =>
     date.toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
@@ -64,6 +82,7 @@ export default function KioskPage() {
 
   return (
     <main className="kiosk-bg min-h-screen flex flex-col select-none" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+      <Toaster position="top-center" />
 
       {/* ── HEADER ─────────────────────────────────────────────────── */}
       <header style={{
@@ -106,9 +125,9 @@ export default function KioskPage() {
             </div>
           </div>
 
-          {/* Camera */}
+          {/* Camera Feed with real-time bounding boxes */}
           <div style={{ flex: 1, minHeight: 0 }}>
-            <CameraFeed className="h-full" />
+            <CameraFeed className="h-full" onFacesDetected={handleFacesDetected} />
           </div>
 
           {/* Instruction */}
@@ -118,7 +137,7 @@ export default function KioskPage() {
                 d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>
-              Hadapkan wajah Anda ke kamera untuk absensi otomatis
+              Hadapkan wajah Anda ke kamera untuk absensi otomatis (Mendukung banyak orang sekaligus)
             </span>
           </div>
         </div>

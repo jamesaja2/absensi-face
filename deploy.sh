@@ -1,5 +1,5 @@
-# Absensi Facial Recognition System — Deployment Script
-# Run this ONCE on the server to deploy the full stack.
+#!/usr/bin/env bash
+# Absensi Facial Recognition System — Deployment & Update Script
 # Usage: bash deploy.sh
 
 set -euo pipefail
@@ -15,6 +15,7 @@ echo ""
 mkdir -p "$DEPLOY_DIR/backend/src/routes"
 mkdir -p "$DEPLOY_DIR/backend/src/services"
 mkdir -p "$DEPLOY_DIR/backend/src/middleware"
+mkdir -p "$DEPLOY_DIR/backend/models"
 mkdir -p "$DEPLOY_DIR/data"
 mkdir -p "$DEPLOY_DIR/backend/uploads"
 mkdir -p "$DEPLOY_DIR/logs"
@@ -26,7 +27,7 @@ cp -r backend/ "$DEPLOY_DIR/"
 # Create .env from example if it doesn't exist
 if [ ! -f "$DEPLOY_DIR/backend/.env" ]; then
   cp "$DEPLOY_DIR/backend/.env.example" "$DEPLOY_DIR/backend/.env"
-  echo "[INFO] Created .env from .env.example — please update COMPREFACE_API_KEY"
+  echo "[INFO] Created .env from .env.example"
 fi
 
 # ─── 3. Copy frontend files ───────────────────────────────────────────────────
@@ -46,29 +47,21 @@ docker network inspect absensi_net > /dev/null 2>&1 || docker network create abs
 
 # ─── 6. Build Docker images ───────────────────────────────────────────────────
 echo ""
-echo "Building Docker images (this may take several minutes)..."
+echo "Building Docker images..."
 cd "$DEPLOY_DIR"
-docker compose -f docker-compose.yml -f docker-compose.override.yml build backend_absensi frontend_absensi
+docker compose -f docker-compose.override.yml build backend_absensi frontend_absensi
 
-# ─── 7. Start all services ────────────────────────────────────────────────────
+# ─── 7. Start services ────────────────────────────────────────────────────────
 echo ""
-echo "Starting all services..."
+echo "Starting services..."
 bash start.sh
 
 echo ""
 echo "===== Deployment Complete ====="
 echo ""
-echo "  Kiosk UI:       http://192.168.100.52:3000"
-echo "  Admin Login:    http://192.168.100.52:3000/admin"
+echo "  Kiosk UI:       http://192.168.100.52:8080"
+echo "  Admin Login:    http://192.168.100.52:8080/admin"
 echo "  Backend API:    http://192.168.100.52:3001/api/health"
+echo "  CompreFace GPU: http://192.168.100.52:8000"
+echo "  Anti-Spoofing:  Active (MiniFASNetV2 ONNX)"
 echo ""
-echo "Default admin credentials:"
-echo "  Username: admin"
-echo "  Password: admin123"
-echo ""
-echo "IMPORTANT: Change ADMIN_PASSWORD in docker-compose.override.yml before going live!"
-echo ""
-echo "To enable auto-start on boot:"
-echo "  sudo cp absensi.service /etc/systemd/system/"
-echo "  sudo systemctl enable absensi"
-echo "  sudo systemctl start absensi"

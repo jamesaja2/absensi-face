@@ -1,10 +1,10 @@
 # docker-compose.override.yml
-# Adds the backend and frontend services to the existing absensi infrastructure stack.
-# Run with: docker compose -f docker-compose.yml -f docker-compose.override.yml up -d
+# Adds backend and frontend services with Anti-Spoofing, Multi-Face detection, and CORS-free reverse proxy support.
+# Run with: docker compose -f docker-compose.override.yml up -d
 
 services:
 
-  # ─── BACKEND (Node.js / Express + SQLite) ────────────────────────────────────
+  # ─── BACKEND (Node.js Express + SQLite + Anti-Spoofing) ──────────────────────
   backend_absensi:
     build:
       context: ./backend
@@ -16,46 +16,51 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3001
-      # MQTT — points to the Mosquitto container on the host IP
+      # MQTT disabled by default (direct web kiosk mode)
+      MQTT_ENABLED: "false"
       MQTT_BROKER: mqtt://192.168.100.52:1883
       MQTT_TOPIC: "double-take/matches/#"
-      # CompreFace
+      # CompreFace connection (GPU-accelerated instance on server)
       COMPREFACE_URL: http://192.168.100.52:8000
-      # NOTE: compreface-ui listens on port 80 internally (maps to host 8000)
-      # If running backend outside Docker on same host, use http://192.168.100.52:8000
       COMPREFACE_API_KEY: ${COMPREFACE_API_KEY:-b410e83f-4343-4079-a98f-d43e13610846}
-      # Database (persisted via volume)
+      # Anti-Spoofing (Passive Liveness Detection via MiniFASNet)
+      ENABLE_ANTISPOOF: "true"
+      ANTISPOOF_THRESHOLD: "0.70"
+      ANTISPOOF_MODEL_PATH: /app/models/minifasnet_v2.onnx
+      # Database persistence
       DB_PATH: /data/attendance.db
-      # JWT — CHANGE THIS IN PRODUCTION
+      # JWT Auth
       JWT_SECRET: ${JWT_SECRET:-change-this-secret-in-production}
       JWT_EXPIRES_IN: 8h
-      # Admin credentials — CHANGE THESE
+      # Admin credentials
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
-      # Detection settings
+      # Recognition Settings
       CONFIDENCE_THRESHOLD: 80
       DEBOUNCE_MINUTES: 3
-      # Timezone Indonesia (WIB)
+      # Timezone WIB
       TZ: Asia/Jakarta
     volumes:
       - ./data:/data
       - ./backend/uploads:/app/uploads
+      - ./backend/models:/app/models
     networks:
       - absensi_net
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3001/api/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
 
-  # ─── FRONTEND (Next.js) ───────────────────────────────────────────────────────
+  # ─── FRONTEND (Next.js Kiosk) ────────────────────────────────────────────────
   frontend_absensi:
     build:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_BACKEND_URL: http://192.168.100.52:3001
+        # Empty string ensures client uses relative URLs (/api and /socket.io) to avoid CORS/Mixed Content
+        NEXT_PUBLIC_BACKEND_URL: ""
     container_name: frontend_absensi
     restart: unless-stopped
     ports:
@@ -63,6 +68,7 @@ services:
     environment:
       NODE_ENV: production
       NEXT_PUBLIC_BACKEND_URL: ""
+      INTERNAL_BACKEND_URL: "http://backend_absensi:3001"
       HOSTNAME: "0.0.0.0"
       PORT: 8080
     networks:

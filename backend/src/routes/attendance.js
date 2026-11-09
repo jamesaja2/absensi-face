@@ -3,10 +3,14 @@ const router = express.Router();
 const { getDb } = require('../db');
 const multer = require('multer');
 const { recognizeFaceFromBuffer } = require('../services/compreface');
-const { processAttendance } = require('../mqtt');
+const { checkLiveness } = require('../services/antispoof');
+const { recordAttendance, CONFIDENCE_THRESHOLD } = require('../services/attendanceService');
 
 // Use memory storage for fast in-memory image processing
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+});
 
 // ─── GET /api/attendance ──────────────────────────────────────────────────────
 // Query params: date (YYYY-MM-DD), user_id, limit (default 100), offset (default 0)
@@ -157,48 +161,119 @@ router.get('/export', (req, res) => {
 });
 
 // ─── POST /api/attendance/recognize ───────────────────────────────────────────
-// Accept an image frame from the kiosk UI and process it with CompreFace
+// Accept an image frame from the kiosk UI, detect multiple faces, check liveness, and log attendance
 router.post('/recognize', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No image file provided' });
     }
 
-    // Call CompreFace to recognize the face
-    const result = await recognizeFaceFromBuffer(req.file.buffer, 'frame.jpg');
+    const io = req.app.get('io');
+    const imageBuffer = req.file.buffer;
+
+    // Recognize all faces in the frame (limit=0 returns all detected faces)
+    const result = await recognizeFaceFromBuffer(imageBuffer, 'frame.jpg');
 
     if (!result || !result.result || result.result.length === 0) {
-      return res.status(200).json({ success: false, message: 'Wajah tidak terdeteksi atau tidak dikenali' });
-    }
-
-    // Get the top match
-    const match = result.result[0].subjects[0];
-    if (!match) {
-      return res.status(200).json({ success: false, message: 'Wajah tidak dikenali dalam database' });
-    }
-
-    const confidence = match.similarity * 100;
-    const subjectName = match.subject;
-
-    // Check confidence against threshold from env or default 80
-    const threshold = parseFloat(process.env.CONFIDENCE_THRESHOLD) || 80;
-    if (confidence < threshold) {
-      return res.status(200).json({ 
-        success: false, 
-        message: `Kepercayaan rendah (${confidence.toFixed(1)}% < ${threshold}%) untuk ${subjectName}` 
+      return res.status(200).json({
+        success: false,
+        message: 'Tidak ada wajah terdeteksi',
+        total_faces: 0,
+        faces: [],
       });
     }
 
-    // Process attendance using existing logic
-    const io = req.app.get('io');
-    processAttendance(subjectName, confidence, io);
+    const detectedFaces = result.result;
+    const faceResults = [];
 
-    res.status(200).json({ 
-      success: true, 
-      subject: subjectName, 
-      confidence 
+    for (const faceItem of detectedFaces) {
+      const box = faceItem.box || {};
+
+      // 1. Anti-Spoofing (Passive Liveness Check)
+      const liveness = await checkLiveness(imageBuffer, box);
+
+      if (!liveness.is_real) {
+        console.warn(`[Anti-Spoof] Spoof attack detected! Liveness: ${(liveness.score * 100).toFixed(1)}%`);
+        faceResults.push({
+          status: 'spoof',
+          is_real: false,
+          liveness_score: liveness.score,
+          box,
+          message: 'Peringatan: Spoofing terdeteksi (Layar HP / Foto Cetak)',
+        });
+        continue;
+      }
+
+      // 2. Face Recognition Match Check
+      const topSubject = faceItem.subjects && faceItem.subjects.length > 0 ? faceItem.subjects[0] : null;
+
+      if (!topSubject) {
+        faceResults.push({
+          status: 'unknown',
+          is_real: true,
+          liveness_score: liveness.score,
+          box,
+          message: 'Wajah tidak terdaftar dalam sistem',
+        });
+        continue;
+      }
+
+      const similarity = topSubject.similarity || 0;
+      const confidence = similarity * 100;
+      const subjectName = topSubject.subject;
+
+      // 3. Process Attendance Record
+      const attendanceResult = recordAttendance(subjectName, confidence, io);
+
+      if (attendanceResult.status === 'recorded') {
+        faceResults.push({
+          status: 'recognized',
+          is_real: true,
+          liveness_score: liveness.score,
+          user: attendanceResult.user,
+          confidence,
+          box,
+          log: attendanceResult.log,
+          message: `Absen berhasil: ${attendanceResult.user.name}`,
+        });
+      } else if (attendanceResult.status === 'debounced') {
+        faceResults.push({
+          status: 'debounced',
+          is_real: true,
+          liveness_score: liveness.score,
+          user: attendanceResult.user,
+          confidence,
+          remaining_seconds: attendanceResult.remainingSeconds,
+          box,
+          message: `Sudah absen sebelumnya: ${attendanceResult.user.name}`,
+        });
+      } else if (attendanceResult.status === 'low_confidence') {
+        faceResults.push({
+          status: 'low_confidence',
+          is_real: true,
+          liveness_score: liveness.score,
+          subject: subjectName,
+          confidence,
+          box,
+          message: `Kepercayaan rendah (${confidence.toFixed(1)}% < ${CONFIDENCE_THRESHOLD}%)`,
+        });
+      } else {
+        faceResults.push({
+          status: 'unknown',
+          is_real: true,
+          liveness_score: liveness.score,
+          subject: subjectName,
+          box,
+          message: 'Data pengguna tidak ditemukan di database',
+        });
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      total_faces: detectedFaces.length,
+      faces: faceResults,
     });
-
   } catch (err) {
     console.error('[Attendance] Recognize error:', err.message);
     res.status(500).json({ error: err.message });
