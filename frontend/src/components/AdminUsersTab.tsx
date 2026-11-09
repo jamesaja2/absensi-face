@@ -145,7 +145,7 @@ export default function AdminUsersTab({ admins, currentAdminEmail, onRefresh }: 
                 </tr>
               ) : (
                 admins.map((adm) => {
-                  const isCurrent = currentAdminEmail && adm.email.toLowerCase() === currentAdminEmail.toLowerCase();
+                  const isCurrent = Boolean(currentAdminEmail && adm.email.toLowerCase() === currentAdminEmail.toLowerCase());
                   return (
                     <tr key={adm.id}>
                       <td>
