@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { attendanceApi } from '@/lib/api';
-import { ShieldCheck, Camera, AlertCircle, RefreshCw, Download, ExternalLink } from 'lucide-react';
+import { ShieldCheck, Camera, AlertCircle, RefreshCw, Download, Zap } from 'lucide-react';
 
 interface CameraFeedProps {
   className?: string;
@@ -26,11 +26,31 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
   const captureCanvasRef = useRef<HTMLCanvasElement>(null);
 
+  // Optical motion detection & server cooldown references
+  const motionCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const prevPixelsRef = useRef<Uint8ClampedArray | null>(null);
+  const cooldownUntilRef = useRef<number>(0);
+  const clearTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   const [status, setStatus] = useState<'loading' | 'active' | 'denied' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isIdle, setIsIdle] = useState(true);
   const [detectedFaces, setDetectedFaces] = useState<DetectedFaceBox[]>([]);
-  const clearTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Instantly wipe overlays and face detections when person walks away
+  const clearOverlays = useCallback(() => {
+    setDetectedFaces([]);
+    if (clearTimerRef.current) {
+      clearTimeout(clearTimerRef.current);
+      clearTimerRef.current = null;
+    }
+    const overlay = overlayCanvasRef.current;
+    if (overlay) {
+      const ctx = overlay.getContext('2d');
+      if (ctx) ctx.clearRect(0, 0, overlay.width, overlay.height);
+    }
+  }, []);
 
   // Safe rounded rect helper
   const safeDrawRoundedRect = (
@@ -96,7 +116,6 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
       let title = 'MEMERIKSA...';
       let subtitle = '';
 
-      // Normalize confidence value (handle both 0-1 and 0-100)
       const rawConf = face.confidence || 0;
       const normConf = rawConf > 1 ? rawConf : rawConf * 100;
 
@@ -206,9 +225,57 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
     if (!videoRef.current || !captureCanvasRef.current || status !== 'active' || isProcessing) return;
 
     const video = videoRef.current;
+    if (video.videoWidth === 0 || video.videoHeight === 0) return;
+
+    // 1. Check if we are in server rest cooldown (person just recognized)
+    const now = Date.now();
+    if (now < cooldownUntilRef.current) {
+      return; // Server is resting, attendance already logged!
+    }
+
+    // 2. Lightweight Client-side Optical Motion Check (32x24 grid = 0.02ms CPU)
+    // Prevents spamming server when nobody is in front of the kiosk!
+    if (!motionCanvasRef.current) {
+      const mCanvas = document.createElement('canvas');
+      mCanvas.width = 32;
+      mCanvas.height = 24;
+      motionCanvasRef.current = mCanvas;
+    }
+
+    const mCtx = motionCanvasRef.current.getContext('2d');
+    if (mCtx) {
+      mCtx.drawImage(video, 0, 0, 32, 24);
+      const currentPixels = mCtx.getImageData(0, 0, 32, 24).data;
+
+      if (prevPixelsRef.current) {
+        let diffSum = 0;
+        const prev = prevPixelsRef.current;
+        for (let i = 0; i < currentPixels.length; i += 4) {
+          diffSum +=
+            Math.abs(currentPixels[i] - prev[i]) +
+            Math.abs(currentPixels[i + 1] - prev[i + 1]) +
+            Math.abs(currentPixels[i + 2] - prev[i + 2]);
+        }
+        const avgDiff = diffSum / (32 * 24 * 3);
+        prevPixelsRef.current = currentPixels;
+
+        // If scene is completely static and no face is currently being tracked:
+        // DO NOT send request! Gives server a complete break!
+        if (avgDiff < 2.2 && detectedFaces.length === 0) {
+          setIsIdle(true);
+          return;
+        }
+      } else {
+        prevPixelsRef.current = currentPixels;
+      }
+    }
+
+    setIsIdle(false);
+
+    // 3. Prepare high-res frame for AI Recognition
     const canvas = captureCanvasRef.current;
     const context = canvas.getContext('2d');
-    if (!context || video.videoWidth === 0 || video.videoHeight === 0) return;
+    if (!context) return;
 
     if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
       canvas.width = video.videoWidth;
@@ -217,43 +284,60 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
 
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    canvas.toBlob(async (blob) => {
-      if (!blob) return;
-      setIsProcessing(true);
-      try {
-        const response = await attendanceApi.recognize(blob);
-        const data = response.data;
+    canvas.toBlob(
+      async (blob) => {
+        if (!blob) return;
+        setIsProcessing(true);
+        try {
+          const response = await attendanceApi.recognize(blob);
+          const data = response.data;
 
-        if (data && data.faces && data.faces.length > 0) {
-          setDetectedFaces(data.faces);
-          drawFaceOverlays(data.faces);
-          if (onFacesDetected) {
-            onFacesDetected(data.faces);
-          }
-
-          if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
-          clearTimerRef.current = setTimeout(() => {
-            setDetectedFaces([]);
-            const overlay = overlayCanvasRef.current;
-            if (overlay) {
-              const ctx = overlay.getContext('2d');
-              if (ctx) ctx.clearRect(0, 0, overlay.width, overlay.height);
+          if (data && data.faces && data.faces.length > 0) {
+            setDetectedFaces(data.faces);
+            drawFaceOverlays(data.faces);
+            if (onFacesDetected) {
+              onFacesDetected(data.faces);
             }
-          }, 2400);
-        }
-      } catch (err) {
-        // Silently tolerate frame drops
-      } finally {
-        setIsProcessing(false);
-      }
-    }, 'image/jpeg', 0.82);
-  }, [status, isProcessing, drawFaceOverlays, onFacesDetected]);
 
-  // Periodic frame capture
+            // If a person is successfully recognized or already logged:
+            // Put recognition on cooldown for 3.5 seconds so server rests and isn't spammed!
+            const hasRecognized = data.faces.some(
+              (f: any) =>
+                f.status === 'recognized' ||
+                f.status === 'debounced' ||
+                f.status === 'already_attended'
+            );
+
+            if (hasRecognized) {
+              cooldownUntilRef.current = Date.now() + 3500;
+            }
+
+            // Set fallback clear timer
+            if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
+            clearTimerRef.current = setTimeout(() => {
+              clearOverlays();
+            }, 2500);
+          } else {
+            // Person walked away! (0 faces returned)
+            // Clear bounding box IMMEDIATELY so it never lingers!
+            clearOverlays();
+          }
+        } catch (err) {
+          // Silently tolerate frame drops
+        } finally {
+          setIsProcessing(false);
+        }
+      },
+      'image/jpeg',
+      0.82
+    );
+  }, [status, isProcessing, detectedFaces, drawFaceOverlays, onFacesDetected, clearOverlays]);
+
+  // Periodic capture check (Runs every 1000ms: lightweight motion check in browser)
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
     if (status === 'active') {
-      interval = setInterval(captureFrame, 1800);
+      interval = setInterval(captureFrame, 1100);
     }
     return () => {
       if (interval) clearInterval(interval);
@@ -281,7 +365,6 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
           audio: false,
         });
       } catch (e1) {
-        // Fallback to basic constraint
         stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       }
 
@@ -344,7 +427,7 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
       {/* Hidden Offscreen Canvas for Frame Capture */}
       <canvas ref={captureCanvasRef} className="hidden" />
 
-      {/* Clean Light Badges when Camera Active */}
+      {/* Clean Badges when Camera Active */}
       {status === 'active' && (
         <>
           <div className="absolute top-3 left-3 flex items-center gap-2 pointer-events-none z-10">
@@ -359,12 +442,16 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
           </div>
 
           <div className="absolute top-3 right-3 pointer-events-none z-10">
-            {isProcessing && (
+            {isProcessing ? (
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-blue-50/95 border border-blue-200 text-blue-700 text-xs font-medium shadow-sm">
                 <RefreshCw size={12} className="animate-spin text-blue-600" />
                 <span>Menganalisa...</span>
               </div>
-            )}
+            ) : isIdle ? (
+              <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100/90 border border-slate-200 text-[10px] font-mono text-slate-500 shadow-xs">
+                <span>STANDBY</span>
+              </div>
+            ) : null}
           </div>
         </>
       )}
@@ -385,9 +472,7 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
           </div>
           <div className="max-w-md">
             <h4 className="text-sm font-bold text-slate-900 mb-1">Akses Kamera Belum Aktif</h4>
-            <p className="text-xs text-slate-600 mb-3 leading-relaxed">
-              {errorMessage}
-            </p>
+            <p className="text-xs text-slate-600 mb-3 leading-relaxed">{errorMessage}</p>
 
             {/* Platform Instructions Box */}
             <div className="text-left bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-2 text-xs text-slate-700 mb-3">
@@ -400,7 +485,7 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
               <div className="flex items-start gap-2 border-t border-slate-200 pt-2">
                 <span className="font-bold text-blue-700 shrink-0">Sertifikat SSL:</span>
                 <span>
-                  Jika muncul &quot;Not Secure&quot;, Anda dapat mengunduh sertifikat SSL server dan klik <em>Always Trust</em> di Mac Keychain.
+                  Jika muncul &quot;Not Secure&quot;, unduh sertifikat SSL server dan pilih <em>Always Trust</em> di Mac Keychain.
                 </span>
               </div>
             </div>
