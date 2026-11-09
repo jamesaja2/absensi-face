@@ -7,7 +7,7 @@ let session = null;
 let initAttempted = false;
 
 const ENABLE_ANTISPOOF = process.env.ENABLE_ANTISPOOF !== 'false';
-const ANTISPOOF_THRESHOLD = parseFloat(process.env.ANTISPOOF_THRESHOLD) || 0.70;
+const ANTISPOOF_THRESHOLD = parseFloat(process.env.ANTISPOOF_THRESHOLD) || 0.60;
 const MODEL_PATH = process.env.ANTISPOOF_MODEL_PATH || path.join(__dirname, '../../models/minifasnet_v2.onnx');
 
 /**
@@ -130,19 +130,32 @@ async function checkLiveness(imageBuffer, box) {
     const outputName = session.outputNames[0] || 'output';
     const rawOutput = results[outputName].data;
 
-    // Apply Softmax across the 3 classes: [Class 0: 2D Paper, Class 1: Real Live, Class 2: Screen Replay]
+    // Apply Softmax across the 3 classes:
+    // Class 0: Live (Genuine human face)
+    // Class 1: Print-attack (Photo on paper)
+    // Class 2: Replay-attack (Screen / Monitor / Mobile phone)
     const maxVal = Math.max(...rawOutput);
     const exps = Array.from(rawOutput).map(v => Math.exp(v - maxVal));
     const sum = exps.reduce((a, b) => a + b, 0);
     const probs = exps.map(v => v / sum);
 
-    const liveScore = probs[1]; // Class 1 is real human face
+    const liveScore = probs[0];    // Class 0 is Live human face
+    const printScore = probs[1];   // Class 1 is Print attack
+    const replayScore = probs[2];  // Class 2 is Screen/Replay attack
+
     const isReal = liveScore >= ANTISPOOF_THRESHOLD;
+
+    console.log(
+      `[Anti-Spoof] Live: ${(liveScore * 100).toFixed(1)}% | ` +
+      `Print: ${(printScore * 100).toFixed(1)}% | ` +
+      `Replay: ${(replayScore * 100).toFixed(1)}% | ` +
+      `Verdict: ${isReal ? 'REAL' : 'SPOOF'} (Threshold: ${(ANTISPOOF_THRESHOLD * 100).toFixed(0)}%)`
+    );
 
     return {
       is_real: isReal,
       score: liveScore,
-      label: isReal ? 'real' : 'spoof',
+      label: isReal ? 'real' : (replayScore > printScore ? 'screen_replay' : 'print_attack'),
       raw_probs: probs,
       infer_time_ms: inferDuration,
       bypassed: false,
@@ -158,3 +171,4 @@ module.exports = {
   initializeAntiSpoof,
   checkLiveness,
 };
+

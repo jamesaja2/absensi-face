@@ -25,7 +25,7 @@ services:
       COMPREFACE_API_KEY: ${COMPREFACE_API_KEY:-b410e83f-4343-4079-a98f-d43e13610846}
       # Anti-Spoofing (Passive Liveness Detection via MiniFASNet)
       ENABLE_ANTISPOOF: "true"
-      ANTISPOOF_THRESHOLD: "0.70"
+      ANTISPOOF_THRESHOLD: "0.50"
       ANTISPOOF_MODEL_PATH: /app/models/minifasnet_v2.onnx
       # Database persistence
       DB_PATH: /data/attendance.db
