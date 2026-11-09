@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Check, Info, AlertTriangle, X, ShieldCheck, Clock } from 'lucide-react';
 
 export interface PopupEvent {
@@ -26,13 +26,21 @@ interface AttendancePopupProps {
 export default function AttendancePopup({
   event,
   onDismiss,
-  autoDismissMs = 4500,
+  autoDismissMs = 4000,
 }: AttendancePopupProps) {
   const [progress, setProgress] = useState(100);
   const [isClosing, setIsClosing] = useState(false);
+  const onDismissRef = useRef(onDismiss);
+  onDismissRef.current = onDismiss;
+
+  const eventId = event?.id;
 
   useEffect(() => {
-    if (!event) return;
+    if (!eventId) {
+      setIsClosing(false);
+      setProgress(100);
+      return;
+    }
 
     setProgress(100);
     setIsClosing(false);
@@ -46,14 +54,16 @@ export default function AttendancePopup({
 
     const timer = setTimeout(() => {
       setIsClosing(true);
-      setTimeout(onDismiss, 200);
+      setTimeout(() => {
+        onDismissRef.current();
+      }, 180);
     }, autoDismissMs);
 
     return () => {
       clearInterval(interval);
       clearTimeout(timer);
     };
-  }, [event, autoDismissMs, onDismiss]);
+  }, [eventId, autoDismissMs]);
 
   if (!event) return null;
 
@@ -121,8 +131,11 @@ export default function AttendancePopup({
           <button
             onClick={() => {
               setIsClosing(true);
-              setTimeout(onDismiss, 150);
+              setTimeout(() => {
+                onDismissRef.current();
+              }, 150);
             }}
+            aria-label="Tutup notifikasi"
             className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
           >
             <X size={15} />

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { attendanceApi } from '@/lib/api';
+import { setKioskToken } from '@/lib/kiosk';
 import { ShieldCheck, Camera, AlertCircle, RefreshCw, Download, Zap } from 'lucide-react';
 
 interface CameraFeedProps {
@@ -291,6 +292,10 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
         try {
           const response = await attendanceApi.recognize(blob);
           const data = response.data;
+
+          if (data?.secret_token) {
+            setKioskToken(data.secret_token);
+          }
 
           if (data && data.faces && data.faces.length > 0) {
             setDetectedFaces(data.faces);

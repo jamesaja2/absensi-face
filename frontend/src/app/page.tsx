@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { getSocket } from '@/lib/socket';
 import { attendanceApi, AttendanceLog, kiosksApi } from '@/lib/api';
-import { getKioskId, getKioskName, setKioskName } from '@/lib/kiosk';
+import { getKioskId, getKioskName, setKioskName, setKioskToken } from '@/lib/kiosk';
 import CameraFeed from '@/components/CameraFeed';
 import AttendancePopup, { PopupEvent } from '@/components/AttendancePopup';
 import toast, { Toaster } from 'react-hot-toast';
@@ -47,6 +47,9 @@ export default function KioskPage() {
     try {
       const res = await kiosksApi.getStatus(id);
       setIsApproved(res.data.is_approved);
+      if (res.data.secret_token) {
+        setKioskToken(res.data.secret_token);
+      }
       if (res.data.kiosk?.name) {
         setKioskNameState(res.data.kiosk.name);
       }
@@ -54,6 +57,31 @@ export default function KioskPage() {
       console.warn('Failed to query kiosk status:', e);
     }
   }, []);
+
+  // Popup Deduplication & Cooldown Manager (Prevents popup spam & stuck re-triggering)
+  const lastPopupTimeRef = useRef<{ [key: string]: number }>({});
+
+  const showPopup = useCallback((event: PopupEvent) => {
+    const key = `${event.mode}_${event.status}_${event.nomor_induk || event.name}`;
+    const now = Date.now();
+    const lastTime = lastPopupTimeRef.current[key] || 0;
+
+    // Cooldown: 12 seconds before the exact same event can re-trigger for this user
+    if (now - lastTime < 12000) {
+      return;
+    }
+
+    lastPopupTimeRef.current[key] = now;
+    setPopupEvent(event);
+  }, []);
+
+  const handleDismissPopup = useCallback(() => {
+    if (popupEvent) {
+      const key = `${popupEvent.mode}_${popupEvent.status}_${popupEvent.nomor_induk || popupEvent.name}`;
+      lastPopupTimeRef.current[key] = Date.now();
+    }
+    setPopupEvent(null);
+  }, [popupEvent]);
 
   // Load recent logs and kiosk status
   useEffect(() => {
@@ -95,8 +123,8 @@ export default function KioskPage() {
     socket.on('attendance:kiosk_event', (data: any) => {
       if (data?.log) {
         setRecentLogs((prev) => [data.log, ...prev].slice(0, 12));
-        setPopupEvent({
-          id: String(Date.now()),
+        showPopup({
+          id: `log_${data.log.id || Date.now()}`,
           mode: 'ATTENDANCE',
           status: 'recorded',
           name: data.log.name,
@@ -112,8 +140,8 @@ export default function KioskPage() {
 
     // Inquiry Event (Check Mode)
     socket.on('attendance:inquiry', (data: any) => {
-      setPopupEvent({
-        id: String(Date.now()),
+      showPopup({
+        id: `inquiry_${data.user?.nomor_induk || data.user?.name}_${Date.now()}`,
         mode: 'INQUIRY',
         status: data.already_attended ? 'already_attended' : 'not_attended',
         name: data.user?.name || 'Karyawan',
@@ -131,6 +159,7 @@ export default function KioskPage() {
       if (kiosk.kiosk_id === kioskId) {
         setIsApproved(kiosk.status === 'APPROVED');
         if (kiosk.name) setKioskNameState(kiosk.name);
+        if (kiosk.secret_token) setKioskToken(kiosk.secret_token);
         toast.success(`Status Kiosk diperbarui: ${kiosk.status}`);
       }
     });
@@ -142,14 +171,14 @@ export default function KioskPage() {
       socket.off('attendance:inquiry');
       socket.off('kiosk:status_changed');
     };
-  }, [kioskId]);
+  }, [kioskId, showPopup]);
 
   const handleFacesDetected = useCallback((faces: any[]) => {
     // Local detection feedback for spoofing
     const spoofFace = faces.find((f) => f.status === 'spoof' || !f.is_real);
     if (spoofFace) {
-      setPopupEvent({
-        id: String(Date.now()),
+      showPopup({
+        id: `spoof_${Date.now()}`,
         mode: 'ATTENDANCE',
         status: 'spoof',
         name: 'Peringatan Spoofing',
@@ -161,8 +190,8 @@ export default function KioskPage() {
     // Direct inquiry handling for unapproved kiosks
     const inquiryFace = faces.find((f) => f.mode === 'INQUIRY');
     if (inquiryFace && inquiryFace.user) {
-      setPopupEvent({
-        id: String(Date.now()),
+      showPopup({
+        id: `inquiry_${inquiryFace.user.nomor_induk || inquiryFace.user.name}_${Date.now()}`,
         mode: 'INQUIRY',
         status: inquiryFace.already_attended ? 'already_attended' : 'not_attended',
         name: inquiryFace.user.name,
@@ -173,7 +202,7 @@ export default function KioskPage() {
         is_approved: false,
       });
     }
-  }, []);
+  }, [showPopup]);
 
   const formatDate = (date: Date) =>
     date.toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
@@ -213,8 +242,8 @@ export default function KioskPage() {
       {/* Floating Biometric Event Notification Badge */}
       <AttendancePopup
         event={popupEvent}
-        onDismiss={() => setPopupEvent(null)}
-        autoDismissMs={4500}
+        onDismiss={handleDismissPopup}
+        autoDismissMs={4000}
       />
 
       {/* ── CLEAN TOP NAVBAR (Cloudflare Style) ────────────────────── */}

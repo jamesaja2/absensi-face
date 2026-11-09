@@ -480,11 +480,17 @@ router.post('/recognize', recognizeLimiter, upload.single('file'), async (req, r
     const currentKiosk = kioskRes.rows[0];
 
     // Cryptographic Token Verification
-    const isTokenMatching = currentKiosk.secret_token ? (clientToken === currentKiosk.secret_token) : true;
+    // An APPROVED kiosk is authenticated if:
+    // 1) Client token matches secret_token, OR
+    // 2) Client has not yet sent a token (initial/cached connection) - we will auto-sync token back to client.
+    let isTokenMatching = true;
+    if (currentKiosk.secret_token && clientToken) {
+      isTokenMatching = (clientToken === currentKiosk.secret_token);
+    }
     const isApprovedKiosk = currentKiosk.status === 'APPROVED' && isTokenMatching;
 
     if (currentKiosk.status === 'APPROVED' && !isTokenMatching) {
-      console.warn(`[SECURITY ALERT] Kiosk ${kioskId} status is APPROVED but sent an invalid or missing security token! Fallback to INQUIRY mode.`);
+      console.warn(`[SECURITY ALERT] Kiosk ${kioskId} status is APPROVED but sent an invalid security token! Fallback to INQUIRY mode.`);
     }
 
     // 1. Face Detection & Recognition via CompreFace
@@ -495,6 +501,7 @@ router.post('/recognize', recognizeLimiter, upload.single('file'), async (req, r
         success: false,
         kiosk_status: currentKiosk.status,
         is_approved: isApprovedKiosk,
+        secret_token: currentKiosk.secret_token,
         message: 'Tidak ada wajah terdeteksi',
         total_faces: 0,
         faces: [],
@@ -615,6 +622,7 @@ router.post('/recognize', recognizeLimiter, upload.single('file'), async (req, r
       success: true,
       kiosk_status: currentKiosk.status,
       is_approved: isApprovedKiosk,
+      secret_token: currentKiosk.secret_token,
       total_faces: detectedFaces.length,
       faces: faceResults,
     });
