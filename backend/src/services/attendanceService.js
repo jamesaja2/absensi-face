@@ -1,6 +1,6 @@
-const { getDb } = require('../db');
+const { query } = require('../db');
 
-// In-memory debounce map: { userId: lastSeenTimestamp }
+// In-memory debounce map: { `${userId}_${kioskId}`: lastSeenTimestamp }
 const debounceMap = new Map();
 
 const CONFIDENCE_THRESHOLD = parseFloat(process.env.CONFIDENCE_THRESHOLD) || 80;
@@ -25,30 +25,99 @@ function getDebounceRemainingSeconds(userId) {
 }
 
 /**
- * Record attendance for a recognized face subject
- * @param {string} subjectName - Name or compreface_subject_id
- * @param {number} confidence - Confidence percentage (0-100)
- * @param {object} io - Socket.io server instance
- * @returns {object} Result status and log entry
+ * Inquire attendance status without recording (for Unapproved/Pending Kiosks)
  */
-function recordAttendance(subjectName, confidence, io) {
-  const db = getDb();
-
+async function inquireAttendance(subjectName, confidence, kioskId, io) {
   // Find user by compreface_subject_id or name
-  const user = db.prepare(`
-    SELECT * FROM users 
-    WHERE compreface_subject_id = ? OR name = ?
-    LIMIT 1
-  `).get(subjectName, subjectName);
+  const userRes = await query(
+    `SELECT * FROM users WHERE compreface_subject_id = $1 OR name = $1 LIMIT 1`,
+    [subjectName]
+  );
 
-  if (!user) {
-    console.log(`[Attendance] No registered user found for subject: "${subjectName}".`);
-    return { status: 'user_not_found', subject: subjectName };
+  if (userRes.rows.length === 0) {
+    return {
+      mode: 'INQUIRY',
+      status: 'user_not_found',
+      subject: subjectName,
+      message: 'Wajah tidak terdaftar di sistem',
+    };
   }
+
+  const user = userRes.rows[0];
+
+  if (confidence < CONFIDENCE_THRESHOLD) {
+    return {
+      mode: 'INQUIRY',
+      status: 'low_confidence',
+      user,
+      confidence,
+      threshold: CONFIDENCE_THRESHOLD,
+      message: `Tingkat kecocokan wajah rendah (${confidence.toFixed(1)}% < ${CONFIDENCE_THRESHOLD}%)`,
+    };
+  }
+
+  // Check today's attendance
+  const checkRes = await query(
+    `SELECT * FROM attendance_logs 
+     WHERE user_id = $1 AND timestamp::date = CURRENT_DATE 
+     ORDER BY timestamp DESC LIMIT 1`,
+    [user.id]
+  );
+
+  let resultData;
+  if (checkRes.rows.length > 0) {
+    const log = checkRes.rows[0];
+    const timeStr = new Date(log.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    resultData = {
+      mode: 'INQUIRY',
+      status: 'already_attended',
+      already_attended: true,
+      attendance_time: log.timestamp,
+      formatted_time: timeStr,
+      user,
+      confidence,
+      message: `Status: Sudah Absen Hari Ini (Pukul ${timeStr})`,
+    };
+  } else {
+    resultData = {
+      mode: 'INQUIRY',
+      status: 'not_attended',
+      already_attended: false,
+      user,
+      confidence,
+      message: `Status: Belum Terdaftar Absen Hari Ini (Kiosk belum di-approve untuk mencatat kehadiran)`,
+    };
+  }
+
+  // Emit to this kiosk room
+  if (io && kioskId) {
+    io.to(`kiosk:${kioskId}`).emit('attendance:inquiry', resultData);
+  }
+
+  return resultData;
+}
+
+/**
+ * Record attendance for an APPROVED kiosk
+ */
+async function recordAttendance(subjectName, confidence, kioskId, io, liveness = { is_real: true, score: 1.0 }) {
+  // Find user by compreface_subject_id or name
+  const userRes = await query(
+    `SELECT * FROM users WHERE compreface_subject_id = $1 OR name = $1 LIMIT 1`,
+    [subjectName]
+  );
+
+  if (userRes.rows.length === 0) {
+    console.log(`[Attendance] No registered user found for subject: "${subjectName}".`);
+    return { mode: 'ATTENDANCE', status: 'user_not_found', subject: subjectName };
+  }
+
+  const user = userRes.rows[0];
 
   // Check confidence threshold
   if (confidence < CONFIDENCE_THRESHOLD) {
     return {
+      mode: 'ATTENDANCE',
       status: 'low_confidence',
       user,
       confidence,
@@ -56,10 +125,11 @@ function recordAttendance(subjectName, confidence, io) {
     };
   }
 
-  // Check debounce (e.g. within 3 minutes)
+  // Check debounce
   if (isInDebounce(user.id)) {
     const remainingSeconds = getDebounceRemainingSeconds(user.id);
     return {
+      mode: 'ATTENDANCE',
       status: 'debounced',
       user,
       confidence,
@@ -68,43 +138,59 @@ function recordAttendance(subjectName, confidence, io) {
   }
 
   // Insert attendance record
-  const result = db.prepare(`
-    INSERT INTO attendance_logs (user_id, status, confidence)
-    VALUES (?, 'HADIR', ?)
-  `).run(user.id, confidence);
+  const insertRes = await query(
+    `INSERT INTO attendance_logs (user_id, kiosk_id, status, confidence, is_real, liveness_score)
+     VALUES ($1, $2, 'HADIR', $3, $4, $5)
+     RETURNING *`,
+    [user.id, kioskId || 'default_kiosk', confidence, liveness.is_real, liveness.score]
+  );
 
   setDebounce(user.id);
-  console.log(`[DB] Attendance logged for "${user.name}" (${user.nomor_induk}) | Confidence: ${confidence.toFixed(1)}%`);
+  const newLog = insertRes.rows[0];
+  console.log(`[DB] Attendance logged for "${user.name}" (${user.nomor_induk}) | Confidence: ${confidence.toFixed(1)}% | Kiosk: ${kioskId}`);
 
-  // Query the newly inserted record with user details
-  const logEntry = db.prepare(`
-    SELECT 
-      al.id, al.timestamp, al.status, al.confidence,
-      u.id as user_id, u.name, u.nomor_induk, u.photo_url
-    FROM attendance_logs al
-    JOIN users u ON al.user_id = u.id
-    WHERE al.id = ?
-  `).get(result.lastInsertRowid);
+  const logPayload = {
+    ...newLog,
+    user_id: user.id,
+    name: user.name,
+    nomor_induk: user.nomor_induk,
+    email: user.email,
+    photo_url: user.photo_url,
+  };
 
-  // Broadcast to all connected clients via Socket.io
+  // Broadcast to this kiosk room AND admin dashboard
   if (io) {
+    if (kioskId) {
+      io.to(`kiosk:${kioskId}`).emit('attendance:kiosk_event', {
+        mode: 'ATTENDANCE',
+        status: 'recorded',
+        log: logPayload,
+        user,
+        message: `Berhasil Absen: ${user.name}`,
+      });
+    }
+
+    // Global broadcast for admin real-time feed
     io.emit('attendance:new', {
-      log: logEntry,
+      log: logPayload,
+      user,
+      kiosk_id: kioskId,
       message: `Berhasil Absen: ${user.name}`,
     });
-    console.log(`[Socket.io] Emitted attendance:new for "${user.name}"`);
   }
 
   return {
+    mode: 'ATTENDANCE',
     status: 'recorded',
     user,
     confidence,
-    log: logEntry,
+    log: logPayload,
   };
 }
 
 module.exports = {
   recordAttendance,
+  inquireAttendance,
   isInDebounce,
   setDebounce,
   getDebounceRemainingSeconds,

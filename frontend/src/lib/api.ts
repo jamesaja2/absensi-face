@@ -1,7 +1,6 @@
 import axios from 'axios';
+import { getKioskId } from './kiosk';
 
-// Gunakan relative path '/api' secara default, cocok untuk reverse proxy (Nginx).
-// Jika ingin test lokal tanpa proxy, fallback ke environment variable.
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || '';
 
 export const api = axios.create({
@@ -9,13 +8,14 @@ export const api = axios.create({
   timeout: 30000,
 });
 
-// Attach JWT token to every request if available
+// Attach JWT token & Kiosk ID to every request
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
     const token = localStorage.getItem('admin_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    config.headers['x-kiosk-id'] = getKioskId();
   }
   return config;
 });
@@ -24,13 +24,36 @@ api.interceptors.request.use((config) => {
 export const authApi = {
   login: (username: string, password: string) =>
     api.post('/auth/login', { username, password }),
+  googleLogin: (credential: string) =>
+    api.post('/auth/google', { credential }),
   verify: () =>
     api.post('/auth/verify'),
+  getMe: () =>
+    api.get('/auth/me'),
+};
+
+// ── Admin Users Management ───────────────────────────────────────────────────
+export const adminUsersApi = {
+  getAll: () => api.get('/admin/users'),
+  create: (data: { email: string; name: string; role: 'super_admin' | 'admin' | 'operator' }) =>
+    api.post('/admin/users', data),
+  update: (id: number, data: { role?: string; status?: string; name?: string }) =>
+    api.patch(`/admin/users/${id}`, data),
+  delete: (id: number) => api.delete(`/admin/users/${id}`),
+};
+
+// ── Kiosks Management ─────────────────────────────────────────────────────────
+export const kiosksApi = {
+  getStatus: (kioskId: string) => api.get(`/kiosks/status/${encodeURIComponent(kioskId)}`),
+  getAll: () => api.get('/admin/kiosks'),
+  update: (kioskId: string, data: { status?: 'APPROVED' | 'PENDING' | 'REJECTED'; name?: string }) =>
+    api.patch(`/admin/kiosks/${encodeURIComponent(kioskId)}`, data),
+  delete: (kioskId: string) => api.delete(`/admin/kiosks/${encodeURIComponent(kioskId)}`),
 };
 
 // ── Users ─────────────────────────────────────────────────────────────────────
 export const usersApi = {
-  getAll: () => api.get('/users'),
+  getAll: (params?: { search?: string }) => api.get('/users', { params }),
   getById: (id: number) => api.get(`/users/${id}`),
   create: (data: FormData) =>
     api.post('/users', data, { headers: { 'Content-Type': 'multipart/form-data' } }),
@@ -48,34 +71,76 @@ export const usersApi = {
 
 // ── Attendance ────────────────────────────────────────────────────────────────
 export const attendanceApi = {
-  getLogs: (params?: { date?: string; user_id?: number; limit?: number; offset?: number }) =>
-    api.get('/attendance', { params }),
-  getStatsToday: () => api.get('/attendance/stats/today'),
-  exportCSV: (params?: { date?: string; user_id?: number }) => {
+  getLogs: (params?: {
+    date?: string;
+    start_date?: string;
+    end_date?: string;
+    user_id?: number;
+    kiosk_id?: string;
+    search?: string;
+    limit?: number;
+    page?: number;
+  }) => api.get('/attendance', { params }),
+
+  getAnalytics: () => api.get('/attendance/analytics'),
+
+  exportExcel: (params?: { start_date?: string; end_date?: string; kiosk_id?: string; user_id?: number }) => {
     const filtered: Record<string, string> = {};
-    if (params?.date) filtered.date = params.date;
+    if (params?.start_date) filtered.start_date = params.start_date;
+    if (params?.end_date) filtered.end_date = params.end_date;
+    if (params?.kiosk_id && params.kiosk_id !== 'all') filtered.kiosk_id = params.kiosk_id;
     if (params?.user_id) filtered.user_id = String(params.user_id);
     const queryStr = new URLSearchParams(filtered).toString();
-    window.open(`${BACKEND_URL}/api/attendance/export${queryStr ? '?' + queryStr : ''}`, '_blank');
+    window.open(`${BACKEND_URL}/api/attendance/export-excel${queryStr ? '?' + queryStr : ''}`, '_blank');
   },
-  recognize: (blob: Blob) => {
+
+  recognize: (blob: Blob, customKioskId?: string) => {
     const form = new FormData();
     form.append('file', blob, 'frame.jpg');
+    const kioskId = customKioskId || getKioskId();
     return api.post('/attendance/recognize', form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: {
+        'Content-Type': 'multipart/form-data',
+        'x-kiosk-id': kioskId,
+      },
     });
   },
 };
 
 // ── Types ─────────────────────────────────────────────────────────────────────
+export interface AdminUser {
+  id: number;
+  email: string;
+  name: string;
+  role: 'super_admin' | 'admin' | 'operator';
+  avatar_url: string | null;
+  status: 'ACTIVE' | 'INACTIVE';
+  created_at: string;
+}
+
+export interface Kiosk {
+  id: number;
+  kiosk_id: string;
+  name: string;
+  status: 'APPROVED' | 'PENDING' | 'REJECTED';
+  ip_address: string | null;
+  user_agent: string | null;
+  last_seen: string | null;
+  created_at: string;
+  total_attendance?: string | number;
+  today_attendance?: string | number;
+}
+
 export interface User {
   id: number;
   name: string;
   nomor_induk: string;
+  email?: string | null;
   photo_url: string | null;
   compreface_subject_id: string | null;
   created_at: string;
   total_attendance?: number;
+  last_attendance?: string;
 }
 
 export interface AttendanceLog {
@@ -83,16 +148,32 @@ export interface AttendanceLog {
   timestamp: string;
   status: string;
   confidence: number;
+  is_real: boolean;
+  liveness_score?: number;
+  kiosk_id: string;
+  kiosk_name?: string;
   user_id: number;
   name: string;
   nomor_induk: string;
+  email?: string | null;
   photo_url: string | null;
 }
 
-export interface TodayStats {
-  date: string;
-  totalAttendanceToday: number;
-  totalUsers: number;
-  latestLog: AttendanceLog | null;
-  hourlyBreakdown: { hour: string; count: number }[];
+export interface AnalyticsData {
+  today: {
+    totalAttendance: number;
+    uniqueUsers: number;
+    avgConfidence: string;
+    totalRegisteredUsers: number;
+    attendanceRate: number;
+  };
+  kiosks: {
+    total: number;
+    approved: number;
+    pending: number;
+  };
+  hourly: { hour: string; count: string | number }[];
+  byKiosk: { kiosk_name: string; kiosk_id: string; count: string | number }[];
+  weeklyTrend: { date: string; day_name: string; count: string | number }[];
+  recentLogs: AttendanceLog[];
 }

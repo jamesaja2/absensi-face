@@ -20,4 +20,27 @@ function authenticateToken(req, res, next) {
   }
 }
 
-module.exports = { authenticateToken };
+function requireRole(allowedRoles) {
+  const roles = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
+
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Unauthorized: Authentication required' });
+    }
+
+    // super_admin always has access
+    if (req.user.role === 'super_admin' || roles.includes(req.user.role)) {
+      return next();
+    }
+
+    return res.status(403).json({
+      error: `Forbidden: Requires one of [${roles.join(', ')}] role. Current role: ${req.user.role || 'none'}`
+    });
+  };
+}
+
+module.exports = {
+  authenticateToken,
+  requireRole,
+  JWT_SECRET,
+};

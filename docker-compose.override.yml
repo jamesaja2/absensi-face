@@ -4,7 +4,28 @@
 
 services:
 
-  # ─── BACKEND (Node.js Express + SQLite + Anti-Spoofing) ──────────────────────
+  # ─── DATABASE (PostgreSQL 16) ────────────────────────────────────────────────
+  postgres_absensi:
+    image: postgres:16-alpine
+    container_name: postgres_absensi
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: absensi_db
+      POSTGRES_USER: absensi
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-absensi_pass_2026}
+      PGDATA: /var/lib/postgresql/data/pgdata
+      TZ: Asia/Jakarta
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
+    networks:
+      - absensi_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U absensi -d absensi_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ─── BACKEND (Node.js Express + PostgreSQL + Anti-Spoofing) ──────────────────
   backend_absensi:
     build:
       context: ./backend
@@ -16,6 +37,9 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3001
+      # Database connection
+      DATABASE_URL: postgres://absensi:${POSTGRES_PASSWORD:-absensi_pass_2026}@postgres_absensi:5432/absensi_db
+      DB_PATH: /data/attendance.db
       # MQTT disabled by default (direct web kiosk mode)
       MQTT_ENABLED: "false"
       MQTT_BROKER: mqtt://192.168.100.52:1883
@@ -27,12 +51,13 @@ services:
       ENABLE_ANTISPOOF: "true"
       ANTISPOOF_THRESHOLD: "0.50"
       ANTISPOOF_MODEL_PATH: /app/models/minifasnet_v2.onnx
-      # Database persistence
-      DB_PATH: /data/attendance.db
+      # Google OAuth & Admin
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      INITIAL_SUPER_ADMIN_EMAIL: ${INITIAL_SUPER_ADMIN_EMAIL:-}
       # JWT Auth
       JWT_SECRET: ${JWT_SECRET:-change-this-secret-in-production}
-      JWT_EXPIRES_IN: 8h
-      # Admin credentials
+      JWT_EXPIRES_IN: 12h
+      # Admin credentials (fallback)
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
       # Recognition Settings
@@ -46,6 +71,9 @@ services:
       - ./backend/models:/app/models
     networks:
       - absensi_net
+    depends_on:
+      postgres_absensi:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/api/health"]
       interval: 30s
@@ -59,8 +87,8 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        # Empty string ensures client uses relative URLs (/api and /socket.io) to avoid CORS/Mixed Content
         NEXT_PUBLIC_BACKEND_URL: ""
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     container_name: frontend_absensi
     restart: unless-stopped
     ports:
@@ -68,6 +96,7 @@ services:
     environment:
       NODE_ENV: production
       NEXT_PUBLIC_BACKEND_URL: ""
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       INTERNAL_BACKEND_URL: "http://backend_absensi:3001"
       HOSTNAME: "0.0.0.0"
       PORT: 8080

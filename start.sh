@@ -12,6 +12,7 @@ LOG_FILE="$SCRIPT_DIR/logs/startup.log"
 # ─── Ensure directories exist ─────────────────────────────────────────────────
 mkdir -p "$SCRIPT_DIR/logs"
 mkdir -p "$SCRIPT_DIR/data"
+mkdir -p "$SCRIPT_DIR/postgres-data"
 mkdir -p "$SCRIPT_DIR/backend/uploads"
 mkdir -p "$SCRIPT_DIR/backend/models"
 

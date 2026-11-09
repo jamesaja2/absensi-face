@@ -70,10 +70,16 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
         text = '⚠️ SPOOFING TERDETEKSI';
       } else if (face.status === 'recognized') {
         color = '#10b981'; // Green
-        text = `✓ ${face.name || 'Terabsen'} (${(face.confidence || 0).toFixed(0)}%)`;
+        text = `✓ ${face.name || (face.user && face.user.name) || 'Terabsen'} (${(face.confidence || 0).toFixed(0)}%)`;
       } else if (face.status === 'debounced') {
         color = '#0284c7'; // Cyan
-        text = `ℹ️ ${face.name || 'Sudah Absen'}`;
+        text = `ℹ️ ${face.name || (face.user && face.user.name) || 'Sudah Absen'}`;
+      } else if (face.status === 'already_attended') {
+        color = '#3b82f6'; // Blue
+        text = `ℹ️ Sudah Absen: ${face.name || (face.user && face.user.name) || ''} (${face.formatted_time || ''})`;
+      } else if (face.status === 'not_attended') {
+        color = '#f59e0b'; // Amber
+        text = `ℹ️ Cek: Belum Absen (${face.name || (face.user && face.user.name) || ''})`;
       } else if (face.status === 'low_confidence' || face.status === 'unknown') {
         color = '#f59e0b'; // Amber
         text = 'Wajah Belum Terdaftar';

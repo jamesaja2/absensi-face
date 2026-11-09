@@ -3,7 +3,14 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { authApi } from '@/lib/api';
-import toast from 'react-hot-toast';
+import toast, { Toaster } from 'react-hot-toast';
+import { ShieldCheck, Eye, EyeOff, Lock, UserCheck } from 'lucide-react';
+
+declare global {
+  interface Window {
+    google?: any;
+  }
+}
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -11,6 +18,9 @@ export default function AdminLoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [googleClientReady, setGoogleClientReady] = useState(false);
+
+  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
 
   useEffect(() => {
     const token = localStorage.getItem('admin_token');
@@ -20,6 +30,66 @@ export default function AdminLoginPage() {
         .catch(() => localStorage.removeItem('admin_token'));
     }
   }, [router]);
+
+  // Load Google Identity Services Script
+  useEffect(() => {
+    if (!googleClientId) return;
+
+    const loadScript = () => {
+      if (document.getElementById('google-jssdk')) {
+        initializeGoogle();
+        return;
+      }
+      const script = document.createElement('script');
+      script.id = 'google-jssdk';
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.defer = true;
+      script.onload = initializeGoogle;
+      document.body.appendChild(script);
+    };
+
+    const initializeGoogle = () => {
+      if (window.google?.accounts?.id) {
+        window.google.accounts.id.initialize({
+          client_id: googleClientId,
+          callback: handleGoogleResponse,
+        });
+
+        const btnContainer = document.getElementById('googleSignInBtn');
+        if (btnContainer) {
+          window.google.accounts.id.renderButton(btnContainer, {
+            theme: 'outline',
+            size: 'large',
+            width: 320,
+            text: 'signin_with',
+            shape: 'rectangular',
+            logo_alignment: 'left',
+          });
+        }
+        setGoogleClientReady(true);
+      }
+    };
+
+    loadScript();
+  }, [googleClientId]);
+
+  const handleGoogleResponse = async (response: any) => {
+    if (!response.credential) return;
+    setLoading(true);
+    try {
+      const res = await authApi.googleLogin(response.credential);
+      localStorage.setItem('admin_token', res.data.token);
+      localStorage.setItem('admin_user', JSON.stringify(res.data.user));
+      toast.success(`Selamat datang, ${res.data.user.name}!`);
+      router.push('/admin/dashboard');
+    } catch (err: any) {
+      const msg = err.response?.data?.error || 'Login Google gagal';
+      toast.error(msg, { duration: 5000 });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,6 +101,7 @@ export default function AdminLoginPage() {
     try {
       const res = await authApi.login(username, password);
       localStorage.setItem('admin_token', res.data.token);
+      localStorage.setItem('admin_user', JSON.stringify(res.data.user));
       toast.success('Login berhasil!');
       router.push('/admin/dashboard');
     } catch (err: any) {
@@ -41,98 +112,174 @@ export default function AdminLoginPage() {
   };
 
   return (
-    <main style={{
-      minHeight: '100vh',
-      background: 'var(--color-bg)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: 24,
-    }}>
-      <div style={{ width: '100%', maxWidth: 380 }}>
+    <main
+      style={{
+        minHeight: '100vh',
+        background: '#0F172A', // Dark Slate 900
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 24,
+        fontFamily: 'Inter, system-ui, sans-serif',
+      }}
+    >
+      <Toaster position="top-center" />
 
-        {/* Logo + title */}
+      <div style={{ width: '100%', maxWidth: 420 }}>
+        {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <img src="/logo.png" alt="Logo PUSTEKOM" style={{ height: 56, margin: '0 auto 16px' }} />
-          <h1 style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-text-primary)' }}>Admin Panel</h1>
-          <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 4 }}>Sistem Absensi Kapel PUSTEKOM by James</p>
+          <div
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: 14,
+              background: 'linear-gradient(135deg, #2563EB, #1D4ED8)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 10px 25px -5px rgba(37, 99, 235, 0.4)',
+              marginBottom: 16,
+            }}
+          >
+            <ShieldCheck size={32} color="#FFFFFF" />
+          </div>
+          <h1 style={{ fontSize: 24, fontWeight: 800, color: '#F8FAFC', letterSpacing: '-0.02em' }}>
+            Portal Administrator
+          </h1>
+          <p style={{ fontSize: 13, color: '#94A3B8', marginTop: 6 }}>
+            Enterprise Facial Attendance & Kiosk Management System
+          </p>
         </div>
 
         {/* Card */}
-        <div className="card" style={{ padding: 28 }}>
-          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div
+          style={{
+            background: '#1E293B',
+            borderRadius: 16,
+            padding: 32,
+            border: '1px solid #334155',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+          }}
+        >
+          {/* Google Sign-in Option */}
+          {googleClientId ? (
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#94A3B8', marginBottom: 12, textAlign: 'center', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Masuk Cepat dengan Akun Google
+              </label>
+              <div id="googleSignInBtn" style={{ display: 'flex', justifyContent: 'center' }} />
+              <div style={{ display: 'flex', alignItems: 'center', margin: '24px 0 16px', gap: 12 }}>
+                <div style={{ flex: 1, height: 1, background: '#334155' }} />
+                <span style={{ fontSize: 11, color: '#64748B', fontWeight: 600, textTransform: 'uppercase' }}>atau login kredensial</span>
+                <div style={{ flex: 1, height: 1, background: '#334155' }} />
+              </div>
+            </div>
+          ) : null}
 
-            {/* Username */}
+          {/* Credentials Form */}
+          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
             <div>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-text-primary)', marginBottom: 6 }}>
-                Username
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#E2E8F0', marginBottom: 6 }}>
+                Username / Email
               </label>
               <input
                 id="admin-username"
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="Masukkan username"
-                className="input"
+                placeholder="admin"
                 autoComplete="username"
+                style={{
+                  width: '100%',
+                  padding: '12px 14px',
+                  borderRadius: 8,
+                  background: '#0F172A',
+                  border: '1px solid #334155',
+                  color: '#F8FAFC',
+                  fontSize: 14,
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
               />
             </div>
 
-            {/* Password */}
             <div>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-text-primary)', marginBottom: 6 }}>
-                Password
-              </label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                <label style={{ fontSize: 13, fontWeight: 600, color: '#E2E8F0' }}>Password</label>
+              </div>
               <div style={{ position: 'relative' }}>
                 <input
                   id="admin-password"
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Masukkan password"
-                  className="input"
-                  style={{ paddingRight: 40 }}
+                  placeholder="••••••••"
                   autoComplete="current-password"
+                  style={{
+                    width: '100%',
+                    padding: '12px 42px 12px 14px',
+                    borderRadius: 8,
+                    background: '#0F172A',
+                    border: '1px solid #334155',
+                    color: '#F8FAFC',
+                    fontSize: 14,
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   style={{
-                    position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
-                    background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)',
-                    display: 'flex', alignItems: 'center',
+                    position: 'absolute',
+                    right: 12,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    color: '#94A3B8',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: 4,
                   }}
+                  tabIndex={-1}
                 >
-                  {showPassword ? (
-                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                    </svg>
-                  ) : (
-                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
-                  )}
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
             </div>
 
-            {/* Submit */}
             <button
-              id="login-submit"
               type="submit"
               disabled={loading}
-              className="btn btn-primary"
-              style={{ width: '100%', padding: '10px 16px', fontSize: 14, marginTop: 4 }}
+              style={{
+                width: '100%',
+                padding: '12px',
+                borderRadius: 8,
+                border: 'none',
+                background: '#2563EB',
+                color: '#FFFFFF',
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                opacity: loading ? 0.7 : 1,
+                marginTop: 6,
+                boxShadow: '0 4px 12px rgba(37, 99, 235, 0.3)',
+                transition: 'background 0.2s',
+              }}
             >
-              {loading ? <><div className="spinner" />Memproses...</> : 'Masuk'}
+              {loading ? 'Memproses...' : 'Masuk ke Dashboard'}
             </button>
           </form>
-        </div>
 
-        <p style={{ textAlign: 'center', fontSize: 10, color: 'var(--color-text-muted)', marginTop: 20, lineHeight: 1.5 }}>
-          Copyright PUSTEKOM 2026. Sistem Absensi Kapel PUSTEKOM by James. All Right Reserved.
-        </p>
+          {/* Footer note */}
+          <div style={{ marginTop: 24, textAlign: 'center', fontSize: 12, color: '#64748B' }}>
+            <a href="/" style={{ color: '#60A5FA', textDecoration: 'none' }}>
+              ← Kembali ke Terminal Absensi Kiosk
+            </a>
+          </div>
+        </div>
       </div>
     </main>
   );

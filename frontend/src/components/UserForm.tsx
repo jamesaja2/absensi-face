@@ -13,6 +13,7 @@ interface UserFormProps {
 export default function UserForm({ user, onSave, onClose }: UserFormProps) {
   const [name, setName] = useState(user?.name || '');
   const [nomorInduk, setNomorInduk] = useState(user?.nomor_induk || '');
+  const [email, setEmail] = useState(user?.email || '');
   const [photoUrl, setPhotoUrl] = useState(user?.photo_url || '');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(user?.photo_url || null);
@@ -41,6 +42,7 @@ export default function UserForm({ user, onSave, onClose }: UserFormProps) {
       const form = new FormData();
       form.append('name', name);
       form.append('nomor_induk', nomorInduk);
+      if (email) form.append('email', email);
       if (photoUrl) form.append('photo_url', photoUrl);
       if (photoFile) form.append('photo', photoFile);
 
@@ -139,6 +141,21 @@ export default function UserForm({ user, onSave, onClose }: UserFormProps) {
               style={isEdit ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
             />
             {isEdit && <p style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>Nomor Induk tidak dapat diubah setelah dibuat.</p>}
+          </div>
+
+          {/* Email */}
+          <div>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-text-primary)', marginBottom: 6 }}>
+              Email <span style={{ fontWeight: 400, color: 'var(--color-text-muted)' }}>(opsional)</span>
+            </label>
+            <input
+              id="user-email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="user@example.com"
+              className="input"
+            />
           </div>
 
           {/* Photo URL */}

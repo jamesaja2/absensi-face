@@ -17,6 +17,7 @@ mkdir -p "$DEPLOY_DIR/backend/src/services"
 mkdir -p "$DEPLOY_DIR/backend/src/middleware"
 mkdir -p "$DEPLOY_DIR/backend/models"
 mkdir -p "$DEPLOY_DIR/data"
+mkdir -p "$DEPLOY_DIR/postgres-data"
 mkdir -p "$DEPLOY_DIR/backend/uploads"
 mkdir -p "$DEPLOY_DIR/logs"
 
