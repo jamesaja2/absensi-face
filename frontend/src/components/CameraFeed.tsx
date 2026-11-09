@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { attendanceApi } from '@/lib/api';
-import { ShieldCheck, ShieldAlert, Cpu, Camera, AlertTriangle } from 'lucide-react';
+import { ShieldCheck, Camera, AlertCircle, RefreshCw, Lock } from 'lucide-react';
 
 interface CameraFeedProps {
   className?: string;
@@ -26,13 +26,40 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
   const captureCanvasRef = useRef<HTMLCanvasElement>(null);
 
-  const [status, setStatus] = useState<'loading' | 'active' | 'denied' | 'error'>('loading');
+  const [status, setStatus] = useState<'loading' | 'active' | 'denied' | 'insecure' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [detectedFaces, setDetectedFaces] = useState<DetectedFaceBox[]>([]);
   const clearTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // High-Tech Industrial HUD Corner Bracket Drawer
+  // Safe rounded rect helper that never crashes across different browser versions
+  const safeDrawRoundedRect = (
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    radius: number
+  ) => {
+    ctx.beginPath();
+    if (typeof (ctx as any).roundRect === 'function') {
+      (ctx as any).roundRect(x, y, w, h, radius);
+    } else {
+      // Fallback
+      ctx.moveTo(x + radius, y);
+      ctx.lineTo(x + w - radius, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+      ctx.lineTo(x + w, y + h - radius);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+      ctx.lineTo(x + radius, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+      ctx.lineTo(x, y + radius);
+      ctx.quadraticCurveTo(x, y, x + radius, y);
+      ctx.closePath();
+    }
+  };
+
+  // High-precision bounding box & corner brackets overlay
   const drawFaceOverlays = useCallback((faces: DetectedFaceBox[]) => {
     const canvas = overlayCanvasRef.current;
     const video = videoRef.current;
@@ -61,122 +88,112 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
       const boxW = (rawX2 - rawX1) * scaleX;
       const boxH = (rawY2 - rawY1) * scaleY;
 
-      // Video has scaleX(-1) mirror effect
+      // Video is mirrored via scaleX(-1)
       const mirroredX = canvas.width - (rawX2 * scaleX);
       const mirroredY = rawY1 * scaleY;
 
-      // Color scheme based on biometric decision
-      let themeColor = '#38bdf8'; // Sky blue default
-      let bgPillColor = 'rgba(15, 23, 42, 0.85)';
-      let label = 'VERIFYING';
-      let sublabel = '';
+      // Color scheme based on detection state
+      let strokeColor = '#0284c7'; // Blue
+      let badgeBg = '#0284c7';
+      let title = 'MEMERIKSA...';
+      let subtitle = '';
 
       if (face.status === 'spoof' || !face.is_real) {
-        themeColor = '#f43f5e'; // Rose / Crimson
-        label = 'THREAT REJECTED';
-        sublabel = 'ANTI-SPOOF TRIGGERED';
+        strokeColor = '#dc2626'; // Red
+        badgeBg = '#dc2626';
+        title = 'PERINGATAN SPOOFING';
+        subtitle = 'Layar HP / Foto Cetak Terdeteksi';
       } else if (face.status === 'recognized') {
-        themeColor = '#10b981'; // Emerald
-        label = (face.name || face.user?.name || 'VERIFIED').toUpperCase();
-        sublabel = `MATCH ${(face.confidence || 0).toFixed(1)}% • RECORDED`;
+        strokeColor = '#16a34a'; // Green
+        badgeBg = '#16a34a';
+        title = (face.name || face.user?.name || 'HADIR').toUpperCase();
+        subtitle = `Terverifikasi (${(face.confidence || 0).toFixed(0)}%)`;
       } else if (face.status === 'debounced') {
-        themeColor = '#06b6d4'; // Cyan
-        label = (face.name || face.user?.name || 'ATTENDED').toUpperCase();
-        sublabel = 'COOLDOWN ACTIVE';
+        strokeColor = '#2563eb'; // Blue
+        badgeBg = '#2563eb';
+        title = (face.name || face.user?.name || 'SUDAH ABSEN').toUpperCase();
+        subtitle = 'Sudah Tercatat';
       } else if (face.status === 'already_attended') {
-        themeColor = '#38bdf8'; // Blue
-        label = (face.name || face.user?.name || 'ATTENDED').toUpperCase();
-        sublabel = `RECORDED AT ${face.formatted_time || 'TODAY'}`;
+        strokeColor = '#2563eb'; // Blue
+        badgeBg = '#2563eb';
+        title = (face.name || face.user?.name || 'SUDAH ABSEN').toUpperCase();
+        subtitle = `Waktu: ${face.formatted_time || 'Hari ini'}`;
       } else if (face.status === 'not_attended') {
-        themeColor = '#f59e0b'; // Amber
-        label = (face.name || face.user?.name || 'IDENTIFIED').toUpperCase();
-        sublabel = 'NOT LOGGED TODAY';
+        strokeColor = '#d97706'; // Amber
+        badgeBg = '#d97706';
+        title = (face.name || face.user?.name || 'BELUM ABSEN').toUpperCase();
+        subtitle = 'Status: Belum Absen Hari Ini';
       } else if (face.status === 'low_confidence' || face.status === 'unknown') {
-        themeColor = '#94a3b8'; // Slate
-        label = 'UNREGISTERED';
-        sublabel = 'NO BIOMETRIC MATCH';
+        strokeColor = '#64748b'; // Slate
+        badgeBg = '#475569';
+        title = 'TIDAK DIKENAL';
+        subtitle = 'Wajah Belum Terdaftar';
       }
 
       ctx.save();
 
-      // 1. Draw Corner HUD Brackets (Precision Enterprise Look)
-      const cornerLen = Math.min(24, boxW * 0.25, boxH * 0.25);
-      ctx.strokeStyle = themeColor;
+      // 1. Draw corner brackets around target face
+      const bracketLen = Math.min(22, boxW * 0.25, boxH * 0.25);
+      ctx.strokeStyle = strokeColor;
       ctx.lineWidth = 3;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
 
       // Top-Left
       ctx.beginPath();
-      ctx.moveTo(mirroredX, mirroredY + cornerLen);
+      ctx.moveTo(mirroredX, mirroredY + bracketLen);
       ctx.lineTo(mirroredX, mirroredY);
-      ctx.lineTo(mirroredX + cornerLen, mirroredY);
+      ctx.lineTo(mirroredX + bracketLen, mirroredY);
       ctx.stroke();
 
       // Top-Right
       ctx.beginPath();
-      ctx.moveTo(mirroredX + boxW - cornerLen, mirroredY);
+      ctx.moveTo(mirroredX + boxW - bracketLen, mirroredY);
       ctx.lineTo(mirroredX + boxW, mirroredY);
-      ctx.lineTo(mirroredX + boxW, mirroredY + cornerLen);
+      ctx.lineTo(mirroredX + boxW, mirroredY + bracketLen);
       ctx.stroke();
 
       // Bottom-Left
       ctx.beginPath();
-      ctx.moveTo(mirroredX, mirroredY + boxH - cornerLen);
+      ctx.moveTo(mirroredX, mirroredY + boxH - bracketLen);
       ctx.lineTo(mirroredX, mirroredY + boxH);
-      ctx.lineTo(mirroredX + cornerLen, mirroredY + boxH);
+      ctx.lineTo(mirroredX + bracketLen, mirroredY + boxH);
       ctx.stroke();
 
       // Bottom-Right
       ctx.beginPath();
-      ctx.moveTo(mirroredX + boxW - cornerLen, mirroredY + boxH);
+      ctx.moveTo(mirroredX + boxW - bracketLen, mirroredY + boxH);
       ctx.lineTo(mirroredX + boxW, mirroredY + boxH);
-      ctx.lineTo(mirroredX + boxW, mirroredY + boxH - cornerLen);
+      ctx.lineTo(mirroredX + boxW, mirroredY + boxH - bracketLen);
       ctx.stroke();
 
-      // Subtle target bounding box outline (light translucent)
-      ctx.strokeStyle = themeColor + '33'; // 20% opacity
+      // Light bounding outline
+      ctx.strokeStyle = strokeColor + '44';
       ctx.lineWidth = 1;
       ctx.strokeRect(mirroredX, mirroredY, boxW, boxH);
 
-      // 2. High-Tech Monospace Identification Badge
-      const pillHeight = sublabel ? 38 : 24;
-      const pillY = Math.max(8, mirroredY - pillHeight - 8);
+      // 2. Identification Pill
+      ctx.font = 'bold 12px Inter, sans-serif';
+      const titleWidth = ctx.measureText(title).width;
+      ctx.font = '10px Inter, sans-serif';
+      const subWidth = subtitle ? ctx.measureText(subtitle).width : 0;
+      const pillW = Math.max(titleWidth, subWidth) + 20;
+      const pillH = subtitle ? 34 : 22;
+      const pillY = Math.max(8, mirroredY - pillH - 6);
 
-      // Measure font
-      ctx.font = 'bold 11px "JetBrains Mono", ui-monospace, Menlo, monospace';
-      const labelMetrics = ctx.measureText(label);
-      ctx.font = '9px "JetBrains Mono", ui-monospace, Menlo, monospace';
-      const subMetrics = sublabel ? ctx.measureText(sublabel) : { width: 0 };
-      const contentWidth = Math.max(labelMetrics.width, subMetrics.width);
-      const pillWidth = Math.max(110, contentWidth + 24);
-
-      // Frosted dark pill background
-      ctx.fillStyle = bgPillColor;
-      ctx.beginPath();
-      ctx.roundRect(mirroredX, pillY, pillWidth, pillHeight, 6);
+      ctx.fillStyle = badgeBg;
+      safeDrawRoundedRect(ctx, mirroredX, pillY, pillW, pillH, 5);
       ctx.fill();
 
-      // Subtle border for the pill
-      ctx.strokeStyle = themeColor + '88';
-      ctx.lineWidth = 1;
-      ctx.stroke();
+      // Text inside pill
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 11px Inter, sans-serif';
+      ctx.fillText(title, mirroredX + 8, pillY + 14);
 
-      // Left vertical accent strip
-      ctx.fillStyle = themeColor;
-      ctx.beginPath();
-      ctx.roundRect(mirroredX, pillY, 3, pillHeight, [6, 0, 0, 6]);
-      ctx.fill();
-
-      // Text rendering
-      ctx.fillStyle = '#f8fafc';
-      ctx.font = 'bold 11px "JetBrains Mono", ui-monospace, Menlo, monospace';
-      ctx.fillText(label, mirroredX + 10, pillY + (sublabel ? 16 : 16));
-
-      if (sublabel) {
-        ctx.fillStyle = themeColor;
-        ctx.font = '800 9px "JetBrains Mono", ui-monospace, Menlo, monospace';
-        ctx.fillText(sublabel, mirroredX + 10, pillY + 30);
+      if (subtitle) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.font = '10px Inter, sans-serif';
+        ctx.fillText(subtitle, mirroredX + 8, pillY + 28);
       }
 
       ctx.restore();
@@ -223,13 +240,14 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
           }, 2400);
         }
       } catch (err) {
-        // Silently tolerate single network frame drops
+        // Silently tolerate frame drops
       } finally {
         setIsProcessing(false);
       }
     }, 'image/jpeg', 0.82);
   }, [status, isProcessing, drawFaceOverlays, onFacesDetected]);
 
+  // Periodic frame capture
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
     if (status === 'active') {
@@ -241,126 +259,191 @@ export default function CameraFeed({ className = '', onFacesDetected }: CameraFe
     };
   }, [status, captureFrame]);
 
-  useEffect(() => {
+  // Initialize camera with progressive fallback
+  const startCamera = useCallback(async () => {
+    setStatus('loading');
+    setErrorMessage('');
+
+    // Check secure context
+    if (typeof window !== 'undefined') {
+      const isHttp = window.location.protocol === 'http:';
+      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      if (isHttp && !isLocal && (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)) {
+        setStatus('insecure');
+        setErrorMessage(
+          'Browser memblokir kamera pada koneksi HTTP biasa. Silakan akses melalui HTTPS (contoh: https://' +
+            window.location.hostname +
+            '/)'
+        );
+        return;
+      }
+    }
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setStatus('error');
+      setErrorMessage('Browser tidak mendukung WebRTC Camera API. Gunakan Chrome, Safari, atau Edge terbaru.');
+      return;
+    }
+
     let stream: MediaStream | null = null;
 
-    async function startCamera() {
+    try {
+      // 1. Try ideal HD resolution
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+        audio: false,
+      });
+    } catch (e1) {
       try {
+        // 2. Fallback to default user camera
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+          video: { facingMode: 'user' },
           audio: false,
         });
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          setStatus('active');
-        }
-      } catch (err: any) {
-        if (err.name === 'NotAllowedError') {
-          setStatus('denied');
-          setErrorMessage('Izin kamera ditolak oleh browser. Harap aktifkan izin kamera pada address bar.');
-        } else if (err.name === 'NotFoundError') {
-          setStatus('error');
-          setErrorMessage('Tidak ada sensor kamera yang terhubung pada perangkat ini.');
-        } else {
-          setStatus('error');
-          setErrorMessage(`Inisialisasi perangkat gagal: ${err.message}`);
+      } catch (e2) {
+        try {
+          // 3. Fallback to any available video device
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false,
+          });
+        } catch (err: any) {
+          if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+            setStatus('denied');
+            setErrorMessage('Izin kamera ditolak. Silakan klik ikon gembok / kamera di address bar browser untuk mengizinkan.');
+          } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+            setStatus('error');
+            setErrorMessage('Tidak ada sensor kamera yang terhubung pada perangkat ini.');
+          } else {
+            setStatus('error');
+            setErrorMessage(`Gagal mengakses kamera: ${err.message || 'Kamera sedang digunakan aplikasi lain'}`);
+          }
+          return;
         }
       }
     }
 
+    if (stream && videoRef.current) {
+      const video = videoRef.current;
+      video.srcObject = stream;
+      video.setAttribute('playsinline', 'true');
+      video.setAttribute('autoplay', 'true');
+      video.muted = true;
+
+      try {
+        await video.play();
+      } catch (playErr) {
+        console.warn('Video auto-play delayed until user interaction:', playErr);
+      }
+      setStatus('active');
+    }
+  }, []);
+
+  useEffect(() => {
     startCamera();
     return () => {
-      if (stream) stream.getTracks().forEach((track) => track.stop());
+      if (videoRef.current && videoRef.current.srcObject) {
+        const stream = videoRef.current.srcObject as MediaStream;
+        stream.getTracks().forEach((track) => track.stop());
+      }
     };
-  }, []);
+  }, [startCamera]);
 
   return (
     <div
       ref={containerRef}
-      className={`relative overflow-hidden bg-[#070B14] border border-slate-800 rounded-xl select-none shadow-2xl ${className}`}
+      className={`relative overflow-hidden bg-slate-900 border border-slate-300 rounded-lg select-none shadow-sm ${className}`}
+      style={{ minHeight: '340px' }}
     >
-      {/* Video Feed (mirrored for natural interaction) */}
+      {/* Video Feed */}
       <video
         ref={videoRef}
         autoPlay
         playsInline
         muted
-        className={`w-full h-full object-cover transition-opacity duration-500 ${
+        className={`w-full h-full object-cover transition-opacity duration-300 ${
           status === 'active' ? 'opacity-100' : 'opacity-0'
         }`}
         style={{ transform: 'scaleX(-1)' }}
       />
 
-      {/* Target Canvas Layer */}
+      {/* Canvas Overlay for corner brackets and labels */}
       <canvas
         ref={overlayCanvasRef}
         className="absolute inset-0 pointer-events-none w-full h-full"
       />
 
-      {/* Capture Canvas (Offscreen) */}
+      {/* Hidden Offscreen Canvas for Frame Capture */}
       <canvas ref={captureCanvasRef} className="hidden" />
 
-      {/* HUD Telemetry: Top Status Overlay */}
+      {/* Clean Light Badges when Camera Active */}
       {status === 'active' && (
-        <div className="absolute top-3 inset-x-3 flex items-center justify-between pointer-events-none z-10">
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-900/80 border border-slate-800 backdrop-blur-md">
+        <>
+          <div className="absolute top-3 left-3 flex items-center gap-2 pointer-events-none z-10">
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-white/95 border border-slate-200 shadow-sm text-xs font-medium text-slate-800">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-[10px] font-mono font-bold text-slate-200 tracking-wider">OPTICAL LIVE</span>
+              <span>Kamera Aktif</span>
             </div>
-
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-900/80 border border-slate-800 backdrop-blur-md">
-              <ShieldCheck size={12} className="text-emerald-400" />
-              <span className="text-[10px] font-mono font-semibold text-slate-300">MINIFASNET LIVENESS ACTIVE</span>
+            <div className="flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-50/95 border border-emerald-200 text-xs font-semibold text-emerald-800 shadow-sm">
+              <ShieldCheck size={13} className="text-emerald-600" />
+              <span>Anti-Spoofing</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {isProcessing ? (
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-blue-950/80 border border-blue-800/80 backdrop-blur-md text-blue-300">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping" />
-                <span className="text-[10px] font-mono font-bold">ANALYZING FRAME</span>
-              </div>
-            ) : (
-              <div className="px-2 py-0.5 rounded bg-slate-900/60 border border-slate-800/60 text-slate-400 text-[10px] font-mono">
-                STANDBY
+          <div className="absolute top-3 right-3 pointer-events-none z-10">
+            {isProcessing && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-blue-50/95 border border-blue-200 text-blue-700 text-xs font-medium shadow-sm">
+                <RefreshCw size={12} className="animate-spin text-blue-600" />
+                <span>Menganalisa...</span>
               </div>
             )}
           </div>
-        </div>
-      )}
-
-      {/* HUD Telemetry: Bottom Bar */}
-      {status === 'active' && (
-        <div className="absolute bottom-3 inset-x-3 flex items-center justify-between pointer-events-none z-10 text-[10px] font-mono text-slate-400">
-          <div className="flex items-center gap-2 px-2.5 py-1 rounded bg-slate-950/80 border border-slate-800/80 backdrop-blur-md">
-            <Cpu size={11} className="text-slate-500" />
-            <span>ARCFACE-RESNET100 • ONNX RUNTIME</span>
-          </div>
-
-          <div className="px-2.5 py-1 rounded bg-slate-950/80 border border-slate-800/80 backdrop-blur-md text-slate-400">
-            AUTO-CAPTURE: 1.6s
-          </div>
-        </div>
+        </>
       )}
 
       {/* Loading State */}
       {status === 'loading' && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#070B14] text-slate-400 space-y-3">
-          <div className="w-8 h-8 border-2 border-blue-500/20 border-t-blue-500 rounded-full animate-spin" />
-          <div className="text-xs font-mono tracking-wider text-slate-300">INITIALIZING OPTICAL SENSOR...</div>
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-50 text-slate-600 space-y-3 p-6 text-center">
+          <div className="w-8 h-8 border-3 border-slate-300 border-t-blue-600 rounded-full animate-spin" />
+          <p className="text-xs font-medium text-slate-600">Menghubungkan ke sensor kamera...</p>
         </div>
       )}
 
-      {/* Error & Permission Denied State */}
-      {(status === 'denied' || status === 'error') && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0B0F19] text-center p-8 space-y-4">
-          <div className="w-12 h-12 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
-            <AlertTriangle size={24} />
+      {/* Insecure Context (HTTP instead of HTTPS) Notice */}
+      {status === 'insecure' && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-white text-center p-8 space-y-4">
+          <div className="w-12 h-12 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600">
+            <Lock size={22} />
           </div>
           <div>
-            <div className="text-sm font-bold text-white mb-1">SENSOR CAPTURE ERROR</div>
-            <div className="text-xs text-slate-400 max-w-sm">{errorMessage}</div>
+            <h4 className="text-sm font-bold text-slate-900 mb-1">Akses Kamera Memerlukan HTTPS</h4>
+            <p className="text-xs text-slate-600 max-w-sm mb-4">{errorMessage}</p>
+            <a
+              href={`https://${typeof window !== 'undefined' ? window.location.hostname : '192.168.100.52'}/`}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-md shadow-sm transition-colors"
+            >
+              <span>Buka dengan HTTPS</span>
+            </a>
+          </div>
+        </div>
+      )}
+
+      {/* Permission Denied or Error State */}
+      {(status === 'denied' || status === 'error') && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-white text-center p-8 space-y-3">
+          <div className="w-12 h-12 rounded-full bg-red-50 border border-red-200 flex items-center justify-center text-red-600">
+            <AlertCircle size={22} />
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-slate-900 mb-1">Kamera Tidak Dapat Diakses</h4>
+            <p className="text-xs text-slate-600 max-w-sm mb-4">{errorMessage}</p>
+            <button
+              onClick={startCamera}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 text-xs font-semibold rounded-md transition-colors"
+            >
+              <RefreshCw size={13} />
+              <span>Coba Lagi</span>
+            </button>
           </div>
         </div>
       )}

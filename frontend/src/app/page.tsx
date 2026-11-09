@@ -13,13 +13,9 @@ import {
   AlertCircle,
   Settings,
   ShieldCheck,
-  ShieldAlert,
   Clock,
-  ExternalLink,
-  Radio,
-  Lock,
-  KeyRound,
-  Sparkles,
+  ArrowRight,
+  Info,
 } from 'lucide-react';
 
 export default function KioskPage() {
@@ -33,7 +29,7 @@ export default function KioskPage() {
   const [showKioskModal, setShowKioskModal] = useState(false);
   const [tempKioskName, setTempKioskName] = useState('');
 
-  // Setup Kiosk ID & Real-Time Synchronized Clock
+  // Setup Kiosk ID & Clock
   useEffect(() => {
     const id = getKioskId();
     const name = getKioskName();
@@ -45,7 +41,7 @@ export default function KioskPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Query Backend Kiosk Authorization Status
+  // Fetch Kiosk status from backend
   const refreshKioskStatus = useCallback(async (id: string) => {
     if (!id) return;
     try {
@@ -59,14 +55,14 @@ export default function KioskPage() {
     }
   }, []);
 
-  // Periodic Telemetry & Recent Logs Loader
+  // Load recent logs and kiosk status
   useEffect(() => {
     if (!kioskId) return;
     refreshKioskStatus(kioskId);
 
     const loadData = async () => {
       try {
-        const logsRes = await attendanceApi.getLogs({ limit: 10 });
+        const logsRes = await attendanceApi.getLogs({ limit: 12 });
         setRecentLogs(logsRes.data.logs || []);
       } catch (err) {
         console.error('Failed to load initial data:', err);
@@ -77,7 +73,7 @@ export default function KioskPage() {
     return () => clearInterval(interval);
   }, [kioskId, refreshKioskStatus]);
 
-  // Real-Time Socket.io Connection & Event Binding
+  // Socket.io room binding for this kiosk
   useEffect(() => {
     if (!kioskId) return;
 
@@ -95,10 +91,10 @@ export default function KioskPage() {
     socket.on('connect', joinKioskRoom);
     socket.on('disconnect', () => setSocketConnected(false));
 
-    // Attendance Registered Event
+    // Attendance Recorded Event
     socket.on('attendance:kiosk_event', (data: any) => {
       if (data?.log) {
-        setRecentLogs((prev) => [data.log, ...prev].slice(0, 10));
+        setRecentLogs((prev) => [data.log, ...prev].slice(0, 12));
         setPopupEvent({
           id: String(Date.now()),
           mode: 'ATTENDANCE',
@@ -108,13 +104,13 @@ export default function KioskPage() {
           photo_url: data.log.photo_url,
           timestamp: data.log.timestamp,
           confidence: data.log.confidence,
-          message: data.message || `Presensi berhasil direkam: ${data.log.name}`,
+          message: data.message || `Presensi berhasil: ${data.log.name}`,
           is_approved: true,
         });
       }
     });
 
-    // Inquiry Audit Event (Unapproved Kiosk Mode)
+    // Inquiry Event (Check Mode)
     socket.on('attendance:inquiry', (data: any) => {
       setPopupEvent({
         id: String(Date.now()),
@@ -130,14 +126,12 @@ export default function KioskPage() {
       });
     });
 
-    // Live Administrative Approval Broadcast
+    // Kiosk status updated by admin live
     socket.on('kiosk:status_changed', (kiosk: any) => {
       if (kiosk.kiosk_id === kioskId) {
         setIsApproved(kiosk.status === 'APPROVED');
         if (kiosk.name) setKioskNameState(kiosk.name);
-        toast.success(`Otorisasi Kiosk diperbarui: ${kiosk.status}`, {
-          icon: kiosk.status === 'APPROVED' ? '🔒' : '⚠️',
-        });
+        toast.success(`Status Kiosk diperbarui: ${kiosk.status}`);
       }
     });
 
@@ -151,15 +145,15 @@ export default function KioskPage() {
   }, [kioskId]);
 
   const handleFacesDetected = useCallback((faces: any[]) => {
-    // Local detection feedback for spoof threats
+    // Local detection feedback for spoofing
     const spoofFace = faces.find((f) => f.status === 'spoof' || !f.is_real);
     if (spoofFace) {
       setPopupEvent({
         id: String(Date.now()),
         mode: 'ATTENDANCE',
         status: 'spoof',
-        name: 'Deteksi Anomali Biometrik',
-        message: 'Layar HP atau media cetak terdeteksi (Anti-Spoofing MiniFASNet)',
+        name: 'Peringatan Spoofing',
+        message: 'Layar HP atau media cetak terdeteksi (Anti-Spoofing)',
       });
       return;
     }
@@ -200,229 +194,221 @@ export default function KioskPage() {
       setKioskName(tempKioskName.trim());
       setKioskNameState(tempKioskName.trim());
       setShowKioskModal(false);
-      toast.success('Konfigurasi nama terminal diperbarui');
+      toast.success('Nama Kiosk disimpan');
     }
   };
 
   return (
-    <main className="min-h-screen bg-[#070B14] text-slate-100 flex flex-col select-none font-sans antialiased selection:bg-blue-600 selection:text-white">
+    <main className="min-h-screen bg-[#F4F5F7] text-slate-800 flex flex-col select-none font-sans">
       <Toaster position="top-center" />
 
-      {/* Floating Biometric Event Badge */}
+      {/* Floating Biometric Event Notification Badge */}
       <AttendancePopup
         event={popupEvent}
         onDismiss={() => setPopupEvent(null)}
         autoDismissMs={4500}
       />
 
-      {/* ── TOP ENTERPRISE HEADER ────────────────────────────────────── */}
-      <header className="h-16 bg-[#0B0F19]/90 backdrop-blur-md border-b border-slate-800/80 px-6 flex items-center justify-between shrink-0 z-20">
-        {/* Brand & Organization */}
+      {/* ── CLEAN TOP NAVBAR (Cloudflare Style) ────────────────────── */}
+      <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between shrink-0 shadow-sm z-20">
+        {/* Brand Logo & Title */}
         <div className="flex items-center gap-3.5">
-          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white shadow-lg shadow-blue-500/20 border border-blue-400/20 font-bold text-sm">
-            PU
-          </div>
+          <img src="/logo.png" alt="PUSTEKOM" className="h-9 object-contain" />
+          <div className="h-6 w-px bg-slate-200 hidden sm:block" />
           <div>
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-sm tracking-tight text-white">PUSTEKOM BIOMETRIC GATEWAY</span>
-              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-950/80 text-blue-400 border border-blue-800/60 font-semibold">
-                v2.6 PROD
-              </span>
-            </div>
-            <div className="text-[11px] text-slate-400 font-mono">
-              Enterprise Optical Recognition Terminal
-            </div>
+            <h1 className="text-sm font-bold text-slate-900 leading-tight">
+              Sistem Presensi Wajah PUSTEKOM
+            </h1>
+            <p className="text-[11px] text-slate-500 font-medium">Terminal Multi-Face & Anti-Spoofing</p>
           </div>
         </div>
 
-        {/* Center: Cryptographic Hardware Token & Authorization Pill */}
-        <div className="flex items-center gap-3">
+        {/* Center: Kiosk Status Pill */}
+        <div className="hidden md:flex items-center gap-3">
           <button
             onClick={() => setShowKioskModal(true)}
-            className={`group flex items-center gap-2.5 px-3 py-1.5 rounded-lg border text-xs font-mono transition-all ${
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
               isApproved === true
-                ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300 hover:bg-emerald-950/60'
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
                 : isApproved === false
-                ? 'bg-amber-950/40 border-amber-800/60 text-amber-300 hover:bg-amber-950/60'
-                : 'bg-slate-900 border-slate-800 text-slate-400'
+                ? 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+                : 'bg-slate-100 text-slate-700 border-slate-200'
             }`}
-            title="Klik untuk konfigurasi & status otorisasi hardware"
+            title="Klik untuk info & pengaturan terminal"
           >
-            <Monitor size={14} className={isApproved === true ? 'text-emerald-400' : 'text-amber-400'} />
-            <span className="font-semibold text-slate-200">{kioskNameState || kioskId}</span>
-            <span className="text-slate-600">•</span>
+            <Monitor size={14} className={isApproved === true ? 'text-emerald-600' : 'text-amber-600'} />
+            <span>{kioskNameState || kioskId}</span>
+            <span className="text-slate-300">•</span>
             {isApproved === true ? (
-              <span className="flex items-center gap-1.5 font-bold text-emerald-400">
+              <span className="flex items-center gap-1 font-bold text-emerald-700">
                 <CheckCircle2 size={13} />
-                <span>AUTHORIZED (RECORDER)</span>
+                <span>Approved (Pencatat Presensi)</span>
               </span>
             ) : isApproved === false ? (
-              <span className="flex items-center gap-1.5 font-bold text-amber-400">
+              <span className="flex items-center gap-1 font-bold text-amber-700">
                 <AlertCircle size={13} />
-                <span>AUDIT ONLY (UNAPPROVED)</span>
+                <span>Mode Cek (Menunggu Persetujuan)</span>
               </span>
             ) : (
-              <span className="text-slate-400">VERIFYING TOKEN...</span>
+              <span>Memeriksa status...</span>
             )}
-            <Settings size={13} className="text-slate-500 group-hover:text-slate-300 transition-colors ml-0.5" />
+            <Settings size={13} className="text-slate-400 ml-1" />
           </button>
         </div>
 
-        {/* Right: Live Connection Pulse & Admin Portal Link */}
+        {/* Right: Connection dot & Admin Portal Link */}
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 px-2.5 py-1 rounded-md bg-slate-900/60 border border-slate-800/60 text-xs font-mono text-slate-400">
+          <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
             <span
-              className={`w-2 h-2 rounded-full ${
-                socketConnected ? 'bg-emerald-400 shadow-sm shadow-emerald-400/50 animate-pulse' : 'bg-rose-500'
+              className={`w-2.5 h-2.5 rounded-full ${
+                socketConnected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'
               }`}
             />
-            <span>{socketConnected ? 'SOCKET SYNCED' : 'DISCONNECTED'}</span>
+            <span className="hidden sm:inline">{socketConnected ? 'Online' : 'Offline'}</span>
           </div>
 
           <a
             href="/admin"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-700/90 border border-slate-700 text-xs font-semibold text-slate-200 transition-all shadow-sm"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#0051C3] hover:bg-[#0045A5] text-white text-xs font-semibold shadow-sm transition-colors"
           >
-            <Lock size={12} className="text-blue-400" />
-            <span>Admin Console</span>
-            <ExternalLink size={11} className="text-slate-400" />
+            <span>Portal Admin</span>
+            <ArrowRight size={13} />
           </a>
         </div>
       </header>
 
       {/* ── UNAPPROVED KIOSK WARNING BANNER ──────────────────────────── */}
       {isApproved === false && (
-        <div className="bg-amber-950/70 border-b border-amber-800/80 px-6 py-2 flex items-center justify-between text-xs text-amber-200 backdrop-blur-md">
-          <div className="flex items-center gap-2.5">
-            <AlertCircle size={15} className="text-amber-400 shrink-0" />
+        <div className="bg-amber-50 border-b border-amber-200 px-6 py-2.5 flex items-center justify-between text-xs text-amber-900">
+          <div className="flex items-center gap-2">
+            <AlertCircle size={15} className="text-amber-600 shrink-0" />
             <span>
-              <strong>Station in Audit-Only Mode:</strong> Hardware ID <code className="bg-amber-900/80 px-1.5 py-0.5 rounded text-amber-100 font-mono">{kioskId}</code> is not yet authorized by a Security Admin. Faces will be analyzed to verify registered timestamps, but no new attendance entries will be committed to the database.
+              <strong>Terminal dalam Mode Pemeriksaan:</strong> Kiosk ID{' '}
+              <code className="bg-amber-100 px-1.5 py-0.5 rounded font-mono font-semibold text-amber-900">
+                {kioskId}
+              </code>{' '}
+              belum disetujui Admin. Wajah dikenali untuk <em>memeriksa status jam absen</em>, namun{' '}
+              <strong>tidak mencatat presensi baru</strong> sampai disetujui di Admin Dashboard.
             </span>
           </div>
           <button
             onClick={() => setShowKioskModal(true)}
-            className="underline underline-offset-2 font-mono text-[11px] text-amber-300 hover:text-white shrink-0 ml-4"
+            className="underline underline-offset-2 font-semibold text-amber-800 hover:text-amber-950 shrink-0 ml-4"
           >
-            Review Token
+            Info Kiosk
           </button>
         </div>
       )}
 
       {/* ── MAIN WORKSPACE GRID ──────────────────────────────────────── */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_390px] gap-6 p-6 min-h-0 overflow-hidden">
-        {/* LEFT COLUMN: Terminal HUD Viewport */}
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6 p-6 min-h-0 overflow-hidden">
+        {/* LEFT COLUMN: Camera & Time */}
         <div className="flex flex-col gap-4 min-h-0">
           {/* Synchronized Precision Clock Card */}
-          <div className="bg-[#0B0F19] border border-slate-800 rounded-xl p-5 flex items-center justify-between shadow-lg">
+          <div className="bg-white border border-slate-200 rounded-lg p-5 flex items-center justify-between shadow-sm">
             <div>
-              <div className="text-4xl lg:text-5xl font-extrabold tracking-tight text-white font-mono">
+              <div className="text-4xl lg:text-5xl font-extrabold tracking-tight text-slate-900 font-mono">
                 {formatTime(currentTime)}
-                <span className="text-xs font-sans text-slate-400 ml-2 font-medium tracking-normal">WIB</span>
+                <span className="text-xs font-sans text-slate-500 ml-2 font-medium">WIB</span>
               </div>
-              <div className="text-xs text-slate-400 mt-1.5 font-medium flex items-center gap-2">
-                <Clock size={13} className="text-blue-400" />
+              <div className="text-xs text-slate-500 mt-1.5 flex items-center gap-2">
+                <Clock size={13} className="text-blue-600" />
                 <span className="capitalize">{formatDate(currentTime)}</span>
               </div>
             </div>
 
             <div className="text-right">
-              <div className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-semibold">
-                Terminal Enforcement
+              <div className="text-[10px] uppercase font-semibold tracking-wider text-slate-400">
+                Mode Terminal
               </div>
               <div
-                className={`text-xs font-mono font-bold mt-1 px-2.5 py-1 rounded inline-flex items-center gap-1.5 border ${
+                className={`text-xs font-bold mt-1 px-2.5 py-1 rounded inline-flex items-center gap-1.5 border ${
                   isApproved
-                    ? 'bg-emerald-950/60 border-emerald-800/80 text-emerald-300'
-                    : 'bg-amber-950/60 border-amber-800/80 text-amber-300'
+                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                    : 'bg-amber-50 text-amber-800 border-amber-200'
                 }`}
               >
-                <span className={`w-1.5 h-1.5 rounded-full ${isApproved ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-                {isApproved ? 'COMMIT_ATTENDANCE_ENABLED' : 'READONLY_INQUIRY_ONLY'}
+                <span className={`w-1.5 h-1.5 rounded-full ${isApproved ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                <span>{isApproved ? 'Presensi Otomatis Aktif' : 'Cek Status Kehadiran'}</span>
               </div>
             </div>
           </div>
 
-          {/* High-Tech Camera HUD Viewport */}
+          {/* Camera Viewport Container */}
           <div className="flex-1 min-h-[380px] relative">
             <CameraFeed className="w-full h-full" onFacesDetected={handleFacesDetected} />
           </div>
 
           {/* Biometric Instruction Strip */}
-          <div className="bg-[#0B0F19] border border-slate-800 rounded-xl px-4 py-3 flex items-center justify-between text-xs text-slate-400">
+          <div className="bg-white border border-slate-200 rounded-lg px-4 py-3 flex items-center justify-between text-xs text-slate-600 shadow-sm">
             <div className="flex items-center gap-2.5">
-              <ShieldCheck size={16} className="text-emerald-400 shrink-0" />
+              <ShieldCheck size={16} className="text-emerald-600 shrink-0" />
               <span>
-                Position your face steadily within optical view. System runs multi-target identification with <strong>MiniFASNet v2</strong> anti-spoofing defense.
+                Arahkan wajah ke kamera. Sistem mengenali banyak wajah sekaligus dengan proteksi{' '}
+                <strong>Anti-Spoofing MiniFASNet</strong>.
               </span>
-            </div>
-            <div className="hidden sm:flex items-center gap-2 text-[10px] font-mono text-slate-400 shrink-0">
-              <Radio size={12} className="text-blue-400 animate-pulse" />
-              <span>GATEWAY ACTIVE</span>
             </div>
           </div>
         </div>
 
-        {/* RIGHT COLUMN: Live Verification Event Stream */}
+        {/* RIGHT COLUMN: Live Attendance Feed */}
         <div className="flex flex-col gap-4 min-h-0">
-          <div className="flex-1 bg-[#0B0F19] border border-slate-800 rounded-xl flex flex-col overflow-hidden shadow-xl">
+          <div className="flex-1 bg-white border border-slate-200 rounded-lg flex flex-col overflow-hidden shadow-sm">
             {/* Stream Header */}
-            <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/40">
+            <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-                <span className="text-xs font-mono font-bold uppercase tracking-wider text-slate-200">
-                  Verification Stream
+                <span className="w-2 h-2 rounded-full bg-blue-600" />
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                  Aktivitas Kehadiran Terakhir
                 </span>
               </div>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
-                {recentLogs.length} RECENT
+              <span className="text-xs font-semibold px-2 py-0.5 rounded bg-slate-200 text-slate-700">
+                {recentLogs.length} Terakhir
               </span>
             </div>
 
-            {/* Event List */}
-            <div className="flex-1 overflow-y-auto divide-y divide-slate-800/60 p-2 space-y-1">
+            {/* Attendance List */}
+            <div className="flex-1 overflow-y-auto divide-y divide-slate-100 p-2 space-y-1">
               {recentLogs.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center p-8 text-center text-slate-500 space-y-2">
-                  <div className="w-10 h-10 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-600">
-                    <Clock size={18} />
-                  </div>
-                  <div className="text-xs font-medium text-slate-400">No Biometric Logs Recorded Today</div>
+                <div className="h-full flex flex-col items-center justify-center p-8 text-center text-slate-400 space-y-2">
+                  <Clock size={24} className="text-slate-300" />
+                  <div className="text-xs font-medium text-slate-500">Belum ada presensi tercatat hari ini</div>
                   <div className="text-[11px] text-slate-400 max-w-xs">
-                    Staff appearances at authorized terminals will automatically stream here.
+                    Karyawan yang terdeteksi di terminal akan otomatis muncul di sini.
                   </div>
                 </div>
               ) : (
                 recentLogs.map((log) => (
                   <div
                     key={log.id}
-                    className="p-3 rounded-lg bg-slate-900/30 hover:bg-slate-900/70 border border-transparent hover:border-slate-800 transition-all flex items-center gap-3.5 group"
+                    className="p-3 rounded-md hover:bg-slate-50 transition-colors flex items-center gap-3.5 group"
                   >
                     {/* User Avatar */}
-                    <div className="w-10 h-10 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 font-bold text-sm shrink-0 overflow-hidden relative shadow-sm">
+                    <div className="w-10 h-10 rounded-full bg-blue-50 border border-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm shrink-0 overflow-hidden">
                       {log.photo_url ? (
                         <img src={log.photo_url} alt={log.name} className="w-full h-full object-cover" />
                       ) : (
                         getInitial(log.name)
                       )}
-                      <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-slate-900" />
                     </div>
 
                     {/* Metadata */}
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs font-bold text-white truncate group-hover:text-blue-400 transition-colors">
+                      <div className="text-xs font-bold text-slate-900 truncate">
                         {log.name}
                       </div>
-                      <div className="text-[11px] font-mono text-slate-400 truncate mt-0.5">
-                        {log.nomor_induk || 'NO_ID'}
+                      <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                        {log.nomor_induk || '—'}
                       </div>
                     </div>
 
-                    {/* Timestamp & Confidence */}
+                    {/* Timestamp & Score */}
                     <div className="text-right shrink-0">
-                      <div className="text-xs font-mono font-bold text-emerald-400">
+                      <div className="text-xs font-bold text-emerald-700 font-mono">
                         {formatLogTime(log.timestamp)}
                       </div>
-                      <div className="text-[10px] font-mono text-slate-400 mt-0.5">
-                        {log.confidence ? `${(log.confidence * 100).toFixed(0)}% MATCH` : 'VERIFIED'}
+                      <div className="text-[10px] text-slate-400 mt-0.5">
+                        {log.confidence ? `${(log.confidence * 100).toFixed(0)}% Cocok` : 'Hadir'}
                       </div>
                     </div>
                   </div>
@@ -431,79 +417,75 @@ export default function KioskPage() {
             </div>
 
             {/* Bottom Status Footer */}
-            <div className="p-3 border-t border-slate-800/80 bg-slate-950/60 flex items-center justify-between text-[11px] font-mono text-slate-400">
-              <span>PUSTEKOM HARDWARE GATEWAY</span>
-              <span className="text-emerald-400">ENCRYPTED</span>
+            <div className="p-3 border-t border-slate-100 bg-slate-50 flex items-center justify-between text-[11px] text-slate-500">
+              <span>PUSTEKOM Biometric Terminal</span>
+              <span className="font-semibold text-emerald-700">Online & Terenkripsi</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* ── KIOSK SETTINGS & TOKEN MODAL ─────────────────────────────── */}
+      {/* ── KIOSK SETTINGS MODAL ── */}
       {showKioskModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="bg-[#0F172A] border border-slate-800 rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+          <div className="bg-white border border-slate-200 rounded-lg p-6 w-full max-w-md shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
-                <Monitor size={18} className="text-blue-400" />
-                <h3 className="font-bold text-sm text-white">Hardware Terminal Configuration</h3>
+                <Monitor size={18} className="text-blue-600" />
+                <h3 className="font-bold text-sm text-slate-900">Pengaturan Terminal Kiosk</h3>
               </div>
               <button
                 onClick={() => setShowKioskModal(false)}
-                className="text-slate-400 hover:text-white text-xs font-mono"
+                className="text-slate-400 hover:text-slate-600 text-sm"
               >
                 ✕
               </button>
             </div>
 
-            {/* Hardware Token Details */}
-            <div className="space-y-3 bg-slate-900/80 border border-slate-800 rounded-xl p-4 text-xs font-mono">
+            {/* Kiosk Info Box */}
+            <div className="bg-slate-50 border border-slate-200 rounded-md p-3.5 space-y-2 text-xs">
               <div className="flex items-center justify-between">
-                <span className="text-slate-400">HARDWARE ID:</span>
-                <span className="text-blue-400 font-bold">{kioskId}</span>
+                <span className="text-slate-500">Kiosk ID:</span>
+                <span className="font-mono font-bold text-slate-800">{kioskId}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-slate-400">AUTHORIZATION:</span>
-                <span className={isApproved ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
-                  {isApproved ? 'APPROVED (FULL COMMITS)' : 'PENDING APPROVAL'}
+                <span className="text-slate-500">Status Lisensi:</span>
+                <span className={isApproved ? 'font-bold text-emerald-700' : 'font-bold text-amber-700'}>
+                  {isApproved ? 'APPROVED (Pencatat Resmi)' : 'PENDING (Menunggu Persetujuan Admin)'}
                 </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-400">CRYPTO PAIRING:</span>
-                <span className="text-slate-300">256-BIT TOKEN PAIRED</span>
               </div>
             </div>
 
-            {/* Terminal Location Name Input */}
+            {/* Terminal Name Input */}
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-slate-300">
-                Terminal Name / Installation Location
+              <label className="block text-xs font-semibold text-slate-700">
+                Nama Lokasi Terminal
               </label>
               <input
                 type="text"
                 value={tempKioskName}
                 onChange={(e) => setTempKioskName(e.target.value)}
                 placeholder="Contoh: Kiosk Lobi Utama Lt. 1"
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+                className="w-full bg-white border border-slate-300 rounded-md px-3.5 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
               />
-              <p className="text-[11px] text-slate-400">
-                Identitas ini memudahkan pemantauan kehadiran berdasarkan lokasi fisik terminal.
+              <p className="text-[11px] text-slate-500">
+                Beri nama yang jelas untuk membedakan lokasi fisik perangkat kiosk ini.
               </p>
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex justify-end gap-2.5 pt-2">
+            {/* Actions */}
+            <div className="flex justify-end gap-2 pt-2">
               <button
                 onClick={() => setShowKioskModal(false)}
-                className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-300 transition-colors"
+                className="px-3.5 py-2 rounded-md border border-slate-300 text-xs font-medium text-slate-700 hover:bg-slate-50"
               >
                 Tutup
               </button>
               <button
                 onClick={handleSaveKioskName}
-                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-semibold text-white transition-colors shadow-sm shadow-blue-500/20"
+                className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-xs font-semibold text-white shadow-sm"
               >
-                Simpan Perubahan
+                Simpan
               </button>
             </div>
           </div>

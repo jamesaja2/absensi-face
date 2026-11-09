@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Check, Info, AlertTriangle, X, ShieldCheck, Clock, Fingerprint } from 'lucide-react';
+import { Check, Info, AlertTriangle, X, ShieldCheck, Clock } from 'lucide-react';
 
 export interface PopupEvent {
   id: string;
@@ -46,7 +46,7 @@ export default function AttendancePopup({
 
     const timer = setTimeout(() => {
       setIsClosing(true);
-      setTimeout(onDismiss, 250);
+      setTimeout(onDismiss, 200);
     }, autoDismissMs);
 
     return () => {
@@ -63,107 +63,103 @@ export default function AttendancePopup({
   const isNotAttended = event.status === 'not_attended';
   const isSpoof = event.status === 'spoof';
 
-  let accentColor = '#10B981'; // Emerald
-  let badgeLabel = 'Presensi Tercatat';
-  let badgeBg = 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400';
+  let accentColor = '#16a34a'; // Emerald
+  let badgeLabel = 'PRESENSI BERHASIL';
+  let badgeBg = 'bg-emerald-50 text-emerald-700 border-emerald-200';
 
   if (isSuccess) {
-    accentColor = '#10B981';
+    accentColor = '#16a34a';
     badgeLabel = 'PRESENSI BERHASIL';
-    badgeBg = 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400';
+    badgeBg = 'bg-emerald-50 text-emerald-700 border-emerald-200';
   } else if (isDebounced) {
-    accentColor = '#0EA5E9';
+    accentColor = '#0284c7';
     badgeLabel = 'SUDAH TERCATAT';
-    badgeBg = 'bg-sky-500/10 border-sky-500/30 text-sky-400';
+    badgeBg = 'bg-sky-50 text-sky-700 border-sky-200';
   } else if (isAlreadyAttended) {
-    accentColor = '#3B82F6';
+    accentColor = '#2563eb';
     badgeLabel = 'MODE CEK: SUDAH ABSEN';
-    badgeBg = 'bg-blue-500/10 border-blue-500/30 text-blue-400';
+    badgeBg = 'bg-blue-50 text-blue-700 border-blue-200';
   } else if (isNotAttended) {
-    accentColor = '#F59E0B';
+    accentColor = '#d97706';
     badgeLabel = 'MODE CEK: BELUM ABSEN';
-    badgeBg = 'bg-amber-500/10 border-amber-500/30 text-amber-400';
+    badgeBg = 'bg-amber-50 text-amber-700 border-amber-200';
   } else if (isSpoof) {
-    accentColor = '#EF4444';
-    badgeLabel = 'SPOOFING BLOCKED';
-    badgeBg = 'bg-rose-500/10 border-rose-500/30 text-rose-400';
+    accentColor = '#dc2626';
+    badgeLabel = 'SPOOFING TERDETEKSI';
+    badgeBg = 'bg-rose-50 text-rose-700 border-rose-200';
   }
 
   const initial = (event.name || '?').charAt(0).toUpperCase();
 
   return (
     <div
-      className={`fixed top-6 right-6 z-50 w-96 max-w-[calc(100vw-3rem)] rounded-xl bg-[#0F172A]/95 backdrop-blur-xl border border-slate-700/80 shadow-2xl shadow-black/70 overflow-hidden transition-all duration-300 ${
-        isClosing ? 'translate-x-full opacity-0 scale-95' : 'translate-x-0 opacity-100 scale-100'
+      className={`fixed top-5 right-5 z-50 w-96 max-w-[calc(100vw-2.5rem)] rounded-lg bg-white border border-slate-200 shadow-xl overflow-hidden transition-all duration-200 ${
+        isClosing ? 'translate-x-full opacity-0' : 'translate-x-0 opacity-100'
       }`}
       style={{ borderLeft: `4px solid ${accentColor}` }}
     >
-      <div className="p-4 flex gap-3.5 items-start relative">
-        {/* User Photo / Avatar */}
-        <div className="relative shrink-0">
-          <div
-            className="w-12 h-12 rounded-xl bg-slate-800 border-2 overflow-hidden flex items-center justify-center font-bold text-lg text-slate-200 shadow-inner"
-            style={{ borderColor: accentColor }}
-          >
-            {event.photo_url ? (
-              <img src={event.photo_url} alt={event.name} className="w-full h-full object-cover" />
-            ) : (
-              initial
-            )}
-          </div>
-          {isSuccess && (
-            <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-emerald-500 text-black flex items-center justify-center border-2 border-slate-900 shadow">
-              <Check size={12} strokeWidth={3} />
-            </div>
-          )}
-        </div>
-
-        {/* Info Column */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between gap-2 mb-1.5">
-            <span className={`text-[10px] font-mono font-bold tracking-wider px-2 py-0.5 rounded border uppercase ${badgeBg}`}>
-              {badgeLabel}
+      <div className="p-4">
+        {/* Header row */}
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2">
+            <span
+              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[11px] font-bold tracking-wider uppercase border ${badgeBg}`}
+            >
+              {isSuccess && <Check size={12} strokeWidth={3} />}
+              {isSpoof && <AlertTriangle size={12} />}
+              {(isAlreadyAttended || isNotAttended || isDebounced) && <Info size={12} />}
+              <span>{badgeLabel}</span>
             </span>
 
-            {event.confidence !== undefined && (
-              <span className="text-[11px] font-mono font-bold text-slate-400">
-                {event.confidence.toFixed(0)}% MATCH
+            {event.confidence && (
+              <span className="text-[11px] font-semibold text-slate-500">
+                {(event.confidence * 100).toFixed(0)}% Cocok
               </span>
             )}
           </div>
 
-          <div className="text-sm font-bold text-white tracking-tight truncate">
-            {event.name}
-          </div>
-
-          {event.nomor_induk && (
-            <div className="text-[11px] font-mono text-slate-400 mt-0.5">
-              ID: {event.nomor_induk}
-            </div>
-          )}
-
-          <div className="text-xs text-slate-300 mt-2 font-medium leading-relaxed">
-            {event.message || 'Verifikasi biometrik berhasil diverifikasi'}
-          </div>
+          <button
+            onClick={() => {
+              setIsClosing(true);
+              setTimeout(onDismiss, 150);
+            }}
+            className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+          >
+            <X size={15} />
+          </button>
         </div>
 
-        {/* Dismiss Button */}
-        <button
-          onClick={() => {
-            setIsClosing(true);
-            setTimeout(onDismiss, 200);
-          }}
-          className="text-slate-500 hover:text-slate-300 p-1 rounded-md hover:bg-slate-800/80 transition-colors -mt-1 -mr-1"
-          aria-label="Tutup"
-        >
-          <X size={15} />
-        </button>
+        {/* Content row */}
+        <div className="flex items-center gap-3.5">
+          <div className="w-12 h-12 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 font-bold text-lg shrink-0 overflow-hidden">
+            {event.photo_url ? (
+              <img src={event.photo_url} alt={event.name} className="w-full h-full object-cover" />
+            ) : (
+              <span>{initial}</span>
+            )}
+          </div>
+
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-bold text-slate-900 truncate">{event.name}</div>
+            {event.nomor_induk && (
+              <div className="text-xs text-slate-500 font-medium">{event.nomor_induk}</div>
+            )}
+            <div className="text-xs text-slate-600 mt-1 leading-snug">
+              {event.message ||
+                (isAlreadyAttended
+                  ? `Sudah presensi jam ${event.formatted_time || ''}`
+                  : isNotAttended
+                  ? 'Belum ada catatan presensi hari ini'
+                  : 'Presensi otomatis berhasil')}
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Countdown Progress Bar */}
-      <div className="w-full h-0.5 bg-slate-800">
+      {/* Linear progress countdown bar */}
+      <div className="h-1 w-full bg-slate-100">
         <div
-          className="h-full transition-all duration-75 linear"
+          className="h-full transition-all duration-75"
           style={{ width: `${progress}%`, backgroundColor: accentColor }}
         />
       </div>

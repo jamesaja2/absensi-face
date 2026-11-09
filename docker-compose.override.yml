@@ -52,7 +52,7 @@ services:
       ANTISPOOF_THRESHOLD: "0.50"
       ANTISPOOF_MODEL_PATH: /app/models/minifasnet_v2.onnx
       # Google OAuth & Admin
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-961412708536-r7d1390rqd66hrnkgq9dctb58ur5rnh0.apps.googleusercontent.com}
       INITIAL_SUPER_ADMIN_EMAIL: ${INITIAL_SUPER_ADMIN_EMAIL:-}
       # JWT Auth
       JWT_SECRET: ${JWT_SECRET:-change-this-secret-in-production}
@@ -88,7 +88,7 @@ services:
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_BACKEND_URL: ""
-        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-961412708536-r7d1390rqd66hrnkgq9dctb58ur5rnh0.apps.googleusercontent.com}
     container_name: frontend_absensi
     restart: unless-stopped
     ports:
@@ -96,7 +96,7 @@ services:
     environment:
       NODE_ENV: production
       NEXT_PUBLIC_BACKEND_URL: ""
-      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-961412708536-r7d1390rqd66hrnkgq9dctb58ur5rnh0.apps.googleusercontent.com}
       INTERNAL_BACKEND_URL: "http://backend_absensi:3001"
       HOSTNAME: "0.0.0.0"
       PORT: 8080
